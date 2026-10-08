@@ -11,8 +11,10 @@ let redisWriteLimiter: Ratelimit | null | undefined;
 function getRedisLimiter(write: boolean) {
   const cached = write ? redisWriteLimiter : redisReadLimiter;
   if (cached !== undefined) return cached;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Upstash's direct integration uses the UPSTASH_* names. Older Vercel
+  // Storage integrations expose the same REST credentials as KV_REST_API_*.
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (!url || !token) {
     if (write) redisWriteLimiter = null;
     else redisReadLimiter = null;
