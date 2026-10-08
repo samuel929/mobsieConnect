@@ -1,0 +1,56 @@
+export type LegalSection = { heading: string; body: string };
+
+export const privacyPolicy: LegalSection[] = [
+  { heading: "Information We Collect", body: "Parent details, learner information, emergency contacts, payment records and school-related documents." },
+  { heading: "Documents", body: "Birth certificates, proof of residence, IDs, immunization records, reports and consent forms." },
+  { heading: "Use of Information", body: "To process enrolments, payments, communications, reports, attendance and legal obligations." },
+  { heading: "Sharing Information", body: "Only with authorised schools, staff, payment providers and authorities where required by law. We do not sell personal information." },
+  { heading: "Security", body: "We use encryption, secure servers and access controls to protect data." },
+  { heading: "Children's Privacy", body: "Learner information is collected only with parent or guardian consent." },
+  { heading: "Notifications", body: "Homework, fees, events, reports, emergencies and newsletters." },
+  { heading: "Analytics", body: "Anonymous usage data may be collected to improve the app." },
+  { heading: "Your Rights", body: "Request access, correction, updates or deletion where legally applicable." },
+  { heading: "Data Retention", body: "Information is retained only as long as necessary for educational and legal purposes." },
+  { heading: "Third-Party Services", body: "Trusted providers may process payments, notifications and cloud services." },
+  { heading: "POPIA Compliance", body: "Mobsie Connect complies with South Africa's Protection of Personal Information Act (POPIA)." },
+  { heading: "Changes", body: "This policy may be updated from time to time." },
+  { heading: "Contact", body: "Contact your school administrator or Mobsie Connect support." },
+];
+
+export const termsAndConditions: LegalSection[] = [
+  { heading: "Age Restriction — No Users Under 18", body: "Mobsie Connect accounts may only be created and operated by a parent, legal guardian or authorised adult who is 18 years of age or older. Children and other persons under 18 may not create or independently use an account." },
+  { heading: "Acceptance of Terms", body: "By using Mobsie Connect, you agree to these Terms and Conditions and our Privacy Policy." },
+  { heading: "About Mobsie Connect", body: "Mobsie Connect connects parents, learners, teachers and schools through communication, enrolment, payments, reports, homework, forms and related educational services." },
+  { heading: "User Accounts", body: "Users must provide accurate information, keep credentials secure and report unauthorized access." },
+  { heading: "School Applications", body: "Submitting an application does not guarantee admission. Schools may approve, decline or request more information." },
+  { heading: "Payments", body: "The app supports school fees, application fees, aftercare, uniforms, trips and other approved charges. Some fees may be non-refundable." },
+  { heading: "Parent Responsibilities", body: "Parents must provide truthful information, keep emergency contacts updated and monitor school communications." },
+  { heading: "Learner Information", body: "Parents confirm they have authority to provide learner information." },
+  { heading: "Communications", body: "Users consent to receive notifications, newsletters, reminders and emergency alerts." },
+  { heading: "Digital Forms", body: "Electronic consent and school forms are considered legally valid." },
+  { heading: "User Conduct", body: "No harassment, false documents, offensive content or unauthorized access attempts." },
+  { heading: "Intellectual Property", body: "All app content remains the property of Mobsie Connect or its licensors." },
+  { heading: "Service Availability", body: "Service interruptions may occur due to maintenance or third-party providers." },
+  { heading: "Limitation of Liability", body: "Mobsie Connect is not liable for internet outages, inaccurate user information or user negligence." },
+  { heading: "Changes", body: "Terms may be updated periodically." },
+  { heading: "Contact", body: "Contact your school administrator or Mobsie Connect support." },
+];
+
+export const enrolmentTerms: LegalSection[] = [
+  { heading: '1. School fees', body: 'I undertake to be liable for the total school fees due to Mobsie Kids Playschool from January to December, including public holidays, school holidays and economic crises.' },
+  { heading: '2. Payment in advance', body: 'I undertake to pay the specified monthly fees in advance by the last day of the month.' },
+  { heading: '3. Collection and legal fees', body: 'I understand that collection and legal fees may be incurred if the account is handed over for collection, together with interest calculated at Prime plus 8%.' },
+  { heading: '4. Deregistration notice', body: 'I understand that one full calendar month (30 days) written notice is required before deregistering a learner.' },
+  { heading: '5. Fees during notice', body: 'I remain responsible for monthly fees per child during the written notice period, including where a learner is absent due to illness, holidays or another reason.' },
+  { heading: '6. Indemnity', body: 'I indemnify the school, its owners and staff against damages or legal costs arising from claims due to sickness or injury sustained during my child’s stay at the school.' },
+  { heading: '7. Fee changes', body: 'I understand that my child’s monthly school fees will not change after a birthday. The registered class or age at the beginning of the year applies for the remainder of that year.' },
+  { heading: '8. School rules', body: 'I agree that all items are subject to the rules of the Playschool as updated from time to time.' },
+  { heading: '9. Collection arrangements', body: 'I will deliver and collect my child personally and on time, or make prior arrangements with the school for third-party collection.' },
+  { heading: '10. Emergency permission', body: 'I grant permission for the person in charge to act on my behalf in the event of an emergency.' },
+  { heading: '11. Special needs disclosure', body: 'I understand that the school is not licensed to cater for children with special needs or conditions and I will declare every child’s condition in advance.' },
+  { heading: '12. Updated particulars', body: 'I will immediately advise the Playschool of any change to personal particulars, especially telephone numbers supplied.' },
+  { heading: '13. Prohibited objects', body: 'I will ensure that no dangerous objects, glass bottles, toys or jewellery are brought to the Playschool.' },
+  { heading: '14. Clothing', body: 'I will mark all clothing clearly.' },
+  { heading: '15. Loss or damage', body: 'I understand that the Playschool accepts no responsibility for loss or damage.' },
+  { heading: '16. Attendance', body: 'I will attend meetings and outings as scheduled from time to time.' },
+];

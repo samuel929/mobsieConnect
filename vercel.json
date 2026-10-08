@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/process-deregistrations",
+      "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/internal/process-scheduled-notifications",
+      "schedule": "* * * * *"
+    }
+  ]
+}

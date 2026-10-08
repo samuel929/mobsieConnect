@@ -1,0 +1,61 @@
+import { z } from "zod";
+import { apiHandler } from "@/server/api";
+import { query } from "@/server/db";
+
+const sendPushSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(1000),
+  audience: z.string().trim().min(1).max(160).default("All campuses"),
+});
+
+type PushToken = { token: string };
+type ExpoTicket = { status: "ok" | "error"; details?: { error?: string } };
+
+function batches<T>(items: T[], size = 100): T[][] {
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size));
+}
+
+export default apiHandler<{ sent: number; failed: number }>(
+  { methods: ["POST"], roles: ["PRINCIPAL"] },
+  async (req, res, { user }) => {
+    const input = sendPushSchema.parse(req.body);
+    const tokens = await query<PushToken>(
+      `SELECT token.expo_push_token AS token
+       FROM mobile_push_tokens token
+       JOIN parent_accounts parent ON parent.id = token.parent_account_id
+       LEFT JOIN branches branch ON branch.id = parent.preferred_branch_id
+       WHERE token.tenant_id = $1 AND token.is_active = true AND parent.is_active = true
+         AND ($2 = 'All campuses' OR branch.name = $2)`,
+      [user!.tenantId, input.audience],
+    );
+
+    let sent = 0;
+    let failed = 0;
+    for (const batch of batches(tokens.rows)) {
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(batch.map(({ token }) => ({
+          to: token, sound: "default", title: input.title, body: input.body,
+          data: { screen: "Notifications" },
+        }))),
+      });
+      if (!response.ok) throw new Error(`Expo push service returned ${response.status}.`);
+      const payload = (await response.json()) as { data?: ExpoTicket[] };
+      const tickets = payload.data ?? [];
+      sent += tickets.filter((ticket) => ticket.status === "ok").length;
+      failed += tickets.filter((ticket) => ticket.status !== "ok").length;
+      const invalidTokens = tickets
+        .map((ticket, index) => ticket.details?.error === "DeviceNotRegistered" ? batch[index]?.token : null)
+        .filter((token): token is string => Boolean(token));
+      if (invalidTokens.length) {
+        await query(
+          `UPDATE mobile_push_tokens SET is_active=false, last_error='DeviceNotRegistered', updated_at=now()
+           WHERE tenant_id=$1 AND expo_push_token=ANY($2::text[])`,
+          [user!.tenantId, invalidTokens],
+        );
+      }
+    }
+    res.status(200).json({ ok: true, data: { sent, failed } });
+  },
+);
