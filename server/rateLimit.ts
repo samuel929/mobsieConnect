@@ -50,9 +50,10 @@ export async function enforceRateLimit(req: NextApiRequest) {
     }
     return;
   }
-  if (process.env.NODE_ENV === "production") {
-    throw new AppError(503, "RATE_LIMIT_NOT_CONFIGURED", "Request protection is not configured.");
-  }
+  // Keep the API available when Redis has not been provisioned yet. This
+  // fallback is scoped to each warm server instance, so Upstash remains the
+  // preferred production limiter, but missing credentials must not make every
+  // endpoint return 503.
   const now = Date.now();
   const bucket = memoryBuckets.get(identifier);
   if (!bucket || now >= bucket.resetAt) {
