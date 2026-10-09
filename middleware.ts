@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC_PATHS = ["/login", "/api", "/_next", "/favicon.ico"];
+const PUBLIC_PATHS = ["/login", "/privacy", "/support", "/api", "/_next", "/favicon.ico"];
 const TEACHER_ROUTES = new Set([
   "/learners",
   "/attendance",
