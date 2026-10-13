@@ -67,6 +67,7 @@
       request(`/api/academics?year=${new Date().getFullYear()}&limit=200`),
       request('/api/events?from=2020-01-01T00:00:00.000Z&to=2035-01-01T00:00:00.000Z&limit=250'),
       request('/api/daily-activities'),
+      request('/api/roles'),
     ];
     if (principal) {
       calls.push(
@@ -83,11 +84,13 @@
         request('/api/attendance/stats'),
         request('/api/reports/stats'),
         request('/api/users'),
+        request('/api/documents?limit=500'),
+        request('/api/newsletters'),
       );
     }
     const results = await Promise.allSettled(calls);
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    const [branches, students, academics, events, dailyActivities, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users] = successful;
+    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters] = successful;
 
     if (branches) {
       window.DB.branches = branches.map((branch) => ({
@@ -122,7 +125,9 @@
         grade: student.grade,
         cls: student.className,
         parent: student.parentName,
-        age: '',
+        dateOfBirth:student.dateOfBirth,
+        age:student.dateOfBirth?Math.max(0,Math.floor((Date.now()-new Date(student.dateOfBirth).getTime())/31557600000)):'',
+        onboardingProfile:student.onboardingProfile||{},
         attendance: student.attendanceRate,
         fees: '—',
         status: statusLabel(student.enrollmentStatus),
@@ -186,6 +191,34 @@
         last:account.lastLoginAt?new Date(account.lastLoginAt).toLocaleString('en-ZA'):'Never',
         status:account.isActive?'Active':'Suspended',
       }));
+    }
+    if (Array.isArray(documents)) {
+      const formatBytes=(bytes)=>{
+        const size=Number(bytes||0);
+        return size>=1024*1024?`${(size/1024/1024).toFixed(1)} MB`:`${Math.max(1,Math.round(size/1024))} KB`;
+      };
+      window.DB.documentsList=documents.map((document)=>({
+        id:document.id,name:document.name,folder:document.folder,size:formatBytes(document.bytes),
+        bytes:Number(document.bytes||0),mimeType:document.mimeType,by:document.ownerName,
+        date:new Date(document.createdAt).toLocaleDateString('en-ZA'),shared:document.sharedWith,
+        url:document.fileUrl,publicId:document.publicId,branchId:document.branchId||'',branchName:document.branchName||'',
+      }));
+    }
+    if (Array.isArray(newsletters)) {
+      window.DB.newsletters=newsletters.map((newsletter)=>({
+        id:newsletter.id,title:newsletter.title,subject:newsletter.title,body:newsletter.body||'',message:newsletter.body||'',
+        audience:newsletter.audience||'All campuses',sent:newsletter.publishedAt?new Date(newsletter.publishedAt).toLocaleString('en-ZA'):'',
+        publishedAt:newsletter.publishedAt,recipients:0,openRate:0,status:'Sent',
+      }));
+    }
+    if(roleData?.roles){
+      const permissions=roleData.permissions||[];
+      window.DB.rolePerms={perms:permissions,roles:roleData.roles.map(role=>({
+        id:role.id,name:role.name,color:role.color,users:Number(role.users||0),isSystem:Boolean(role.isSystem),
+        grants:permissions.map(permission=>(role.permissions||[]).includes(permission)?1:0),
+      }))};
+      window.DB.currentRole=roleData.currentRole;
+      window.DB.currentPermissions=roleData.currentRole?.permissions||[];
     }
     if (applications) {
       window.DB.applications = applications.map((application) => ({
@@ -281,7 +314,7 @@
     // modal edits are authoritative so a reload cannot undo a saved action.
     if (stored?.data?.state) {
       Object.entries(stored.data.state).forEach(([key, value]) => {
-        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','products','ordersList','feedback'].includes(key)) window.DB[key] = value;
+        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
       });
     }
     // Saved control-centre state may predate the Mobsie Connect rename.

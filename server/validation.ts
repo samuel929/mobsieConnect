@@ -82,6 +82,26 @@ export const studentSchema = z.object({
   parentName: z.string().trim().min(2).max(120),
   attendanceRate: z.coerce.number().min(0).max(100).default(100),
   enrollmentStatus: z.string().trim().min(1).max(50).default("ENROLLED"),
+  onboardingProfile: z.object({
+    childGender: z.enum(["BOY", "GIRL", "OTHER"]),
+    childHasDisability: z.boolean().default(false),
+    disabilityDetails: z.string().trim().max(2000).optional().or(z.literal("")),
+    parentEmail: z.email().max(254),
+    parentPhone: phone,
+    relationship: z.enum(["Mother", "Father", "Guardian", "Other"]),
+    preferredStartDate: z.iso.date(),
+    enrollmentType: z.enum(["FULL_TIME", "PART_TIME"]),
+    aftercareRequested: z.boolean().default(false),
+    previousSchool: z.string().trim().max(160).optional().or(z.literal("")),
+    previousSchoolPhone: z.string().trim().max(24).optional().or(z.literal("")),
+    referralSource: z.enum(["SOCIAL_MEDIA", "WORD_OF_MOUTH", "RADIO", "OTHER"]),
+    attendedPreschool: z.boolean(),
+    allergies: z.string().trim().max(1000).optional().or(z.literal("")),
+    emergencyContactName: z.string().trim().min(2).max(120),
+    emergencyContactPhone: phone,
+    feePayerFirstName: z.string().trim().min(2).max(80),
+    feePayerLastName: z.string().trim().min(2).max(80),
+  }).optional(),
 });
 
 export const studentUpdateSchema = studentSchema.partial().extend({

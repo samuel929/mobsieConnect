@@ -10,6 +10,7 @@ const createUserSchema = z.object({
   password: z.string().min(8, "Password must contain at least 8 characters.").max(128),
   role: z.enum(["PRINCIPAL", "TEACHER"]),
   branchId: z.uuid().nullable().optional(),
+  dashboardRoleId: z.uuid().nullable().optional(),
 });
 
 type UserRow = {
@@ -56,5 +57,11 @@ export default apiHandler<UserRow[]>({ methods: ["GET", "POST"], roles: ["PRINCI
      FROM inserted i LEFT JOIN branches b ON b.id=i.branch_id`,
     [user!.tenantId, input.branchId ?? null, input.email, input.name, await bcrypt.hash(input.password, 12), input.role],
   );
+  if(input.dashboardRoleId){
+    const dashboardRole=await query("SELECT 1 FROM dashboard_roles WHERE id=$1 AND tenant_id=$2",[input.dashboardRoleId,user!.tenantId]);
+    if(!dashboardRole.rows[0])throw new AppError(422,"ROLE_NOT_FOUND","Select a valid dashboard role.");
+    await query(`INSERT INTO user_dashboard_roles(user_id,role_id) VALUES($1,$2)
+      ON CONFLICT(user_id) DO UPDATE SET role_id=EXCLUDED.role_id,assigned_at=now()`,[result.rows[0].id,input.dashboardRoleId]);
+  }
   res.status(201).json({ ok: true, data: result.rows });
 });

@@ -6,7 +6,7 @@ import { AppError } from "@/server/errors";
 import { payFastConfig } from "@/server/payfast";
 import { schoolPrice, type SchoolStage, type SchoolType } from "@/server/schoolPackages";
 
-type ApplicationPayment = { id:string; reference:string; applicationType:string; schoolType:SchoolType; schoolStage:SchoolStage; status:string|null };
+type ApplicationPayment = { id:string; reference:string; applicationType:string; schoolType:SchoolType; schoolStage:SchoolStage; branchName:string; status:string|null };
 
 export default apiHandler<unknown>({ methods:["GET","POST"], auth:false }, async(req,res)=>{
   const applicationId=one(req.query.id);
@@ -17,14 +17,14 @@ export default apiHandler<unknown>({ methods:["GET","POST"], auth:false }, async
       FROM application_payments WHERE application_id=$1 ORDER BY created_at DESC LIMIT 1`,[applicationId]);
     res.status(200).json({ok:true,data:result.rows[0]??{status:"NOT_STARTED"}});return;
   }
-  const application=await query<ApplicationPayment>(`SELECT a.id,a.reference,a.application_type AS "applicationType",p.school_type AS "schoolType",p.school_stage AS "schoolStage",
+  const application=await query<ApplicationPayment>(`SELECT a.id,a.reference,a.application_type AS "applicationType",p.school_type AS "schoolType",p.school_stage AS "schoolStage",b.name AS "branchName",
     (SELECT status FROM application_payments x WHERE x.application_id=a.id ORDER BY x.created_at DESC LIMIT 1) AS status
-    FROM applications a JOIN application_preferences p ON p.application_id=a.id WHERE a.id=$1`,[applicationId]);
+    FROM applications a JOIN application_preferences p ON p.application_id=a.id JOIN branches b ON b.id=p.branch_id WHERE a.id=$1`,[applicationId]);
   const row=application.rows[0];
   if(!row) throw new AppError(422,"PREFERENCES_REQUIRED","Save school preferences before paying.");
   if(row.applicationType==="REREGISTRATION") throw new AppError(422,"PAYMENT_NOT_REQUIRED","Re-registration does not require an application fee.");
   if(row.status==="COMPLETE") throw new AppError(409,"ALREADY_PAID","This application fee has already been paid.");
-  const amountCents=schoolPrice(row.schoolType,row.schoolStage).applicationFeeCents;
+  const amountCents=schoolPrice(row.schoolType,row.schoolStage,row.branchName).applicationFeeCents;
   const merchantPaymentId=`${row.reference}-${randomUUID().slice(0,8)}`;
   const saved=await query<{id:string}>(`INSERT INTO application_payments(application_id,merchant_payment_id,amount_cents,status)
     VALUES($1,$2,$3,'CREATED') RETURNING id`,[applicationId,merchantPaymentId,amountCents]);

@@ -45,11 +45,24 @@
       {route:'audit',label:'Audit Logs',icon:'audit'},
       {route:'settings',label:'Settings',icon:'settings'}]},
   ];
+  const ROUTE_PERMISSION={dashboard:'View dashboard',schools:'Manage school profile',branches:'Manage campuses',
+    learners:'Manage learners',parents:'Manage learners',teachers:'Manage teachers','daily-activity':'Manage teachers',
+    applications:'Admissions','waiting-list':'Admissions',attendance:'Manage learners',homework:'Manage learners',
+    reports:'Reports & analytics',calendar:'Communications',payments:'Finance',invoices:'Finance',statements:'Finance',
+    messages:'Communications',newsletters:'Communications',push:'Communications',feedback:'Communications',
+    gallery:'Media & gallery',products:'Finance',orders:'Finance',inventory:'Finance',documents:'Manage school profile',
+    users:'User management',roles:'User management',audit:'Platform settings',settings:'Platform settings'};
+  function can(permission){
+    const saved=window.DB?.currentPermissions;
+    if(Array.isArray(saved))return saved.includes(permission);
+    return window.MobsieSession?.role!=='TEACHER'||['View dashboard','Manage learners','Communications','Media & gallery','Reports & analytics'].includes(permission);
+  }
 
   const App={
     ctx:{school:null,branch:null},
     route:'dashboard',
-    go(r){ if(window.__mobsieNavigate) window.__mobsieNavigate(r); else setRoute(r); },
+    can,
+    go(r){ const permission=ROUTE_PERMISSION[r]||'View dashboard';if(!can(permission)){UI.toast('Your role does not have permission to open this page.','alert');return;}if(window.__mobsieNavigate) window.__mobsieNavigate(r); else setRoute(r); },
     school(){ return this.ctx.school?DB.schools.find(s=>s.id===this.ctx.school):null; },
     branchObj(){ return this.ctx.branch?DB.branches.find(b=>b.id===this.ctx.branch):null; },
     scopeLabel(){ const s=this.school(); return s?s.name:(DB.schools.length===1?DB.schools[0].name:'All Schools'); },
@@ -90,11 +103,10 @@
     });
   }
   function enforceActionVisibility(root){
-    if(window.MobsieSession?.role!=='TEACHER')return;
+    const permission=ROUTE_PERMISSION[App.route]||'View dashboard';
+    if(can(permission))return;
     root.querySelectorAll('button').forEach(button=>{
-      if(/(enrol learner|add parent|add teacher|new application|add campus|record payment|new invoice|add event)/i.test(button.textContent)){
-        button.remove();
-      }
+      button.disabled=true;
     });
   }
 
@@ -102,11 +114,7 @@
   const LOGO=`<img class="brand-logo" src="/mobsie-logo.png" alt="Mobsie Connect">`;
   function renderSidebar(){
     const sb=$('#sidebar'); if(!sb) return;
-    const role=window.MobsieSession?.role||'PRINCIPAL';
-    const teacherRoutes=new Set(['learners','attendance','daily-activity','homework','reports','calendar']);
-    const nav=role==='TEACHER'
-      ? NAV.map(g=>({...g,items:g.items.filter(it=>teacherRoutes.has(it.route))})).filter(g=>g.items.length)
-      : NAV;
+    const nav=NAV.map(g=>({...g,items:g.items.filter(it=>can(ROUTE_PERMISSION[it.route]||'View dashboard'))})).filter(g=>g.items.length);
     sb.innerHTML=`
       <div class="side-logo">${LOGO}</div>
       <nav class="side-nav">${nav.map(g=>
@@ -218,7 +226,8 @@
     c.scrollTop=0; window.scrollTo(0,0);
   }
   function setRoute(route){
-    App.route=(route&&window.Pages[route])?route:'dashboard';
+    const desired=(route&&window.Pages[route])?route:'dashboard';
+    App.route=can(ROUTE_PERMISSION[desired]||'View dashboard')?desired:'dashboard';
     const app=$('#app'); if(app) app.classList.remove('side-open');
     rerender();
   }

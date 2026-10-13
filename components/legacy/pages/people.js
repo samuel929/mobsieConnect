@@ -5,6 +5,7 @@ window.Pages=window.Pages||{};
 
   /* ---------- Learners ---------- */
   function openLearner(l){
+    const profile=l.onboardingProfile||{};
     UI.drawer({
       title:'Learner Profile',
       body:`
@@ -18,6 +19,12 @@ window.Pages=window.Pages||{};
           <div class="mini-stat"><span class="ms-ic ${l.fees==='Paid'?'t-green':'t-red'}">${MCIcon('payments')}</span><div><div class="ms-val">${l.fees}</div><div class="ms-lbl">Fees status</div></div></div>
         </div>
         ${UI.dl([['Age',l.age+' years'],['Parent',esc(l.parent)],['School',esc(l.school)],['Branch',esc(l.branch)],['Class',esc(l.grade)+' '+esc(l.cls)]])}
+        ${Object.keys(profile).length?`<div class="divider"></div><h4 style="margin-bottom:10px">Onboarding information</h4>${UI.dl([
+          ['Date of birth',esc(l.dateOfBirth||'—')],['Gender',esc(profile.childGender||'—')],['Guardian email',esc(profile.parentEmail||'—')],['Guardian phone',esc(profile.parentPhone||'—')],
+          ['Relationship',esc(profile.relationship||'—')],['Preferred start',esc(profile.preferredStartDate||'—')],['Enrollment',esc(String(profile.enrollmentType||'—').replace('_',' '))],
+          ['Aftercare',profile.aftercareRequested?'Requested':'No'],['Disability disclosed',profile.childHasDisability?'Yes':'No'],['Disability details',esc(profile.disabilityDetails||'—')],
+          ['Allergies / medical',esc(profile.allergies||'None disclosed')],['Emergency contact',esc(`${profile.emergencyContactName||'—'} · ${profile.emergencyContactPhone||'—'}`)]
+        ])}`:''}
         <div class="divider"></div>
         <h4 style="margin-bottom:10px">Recent activity</h4>
         <div class="feed">
@@ -122,35 +129,50 @@ window.Pages=window.Pages||{};
       });
       root.querySelector('#lEnrol').addEventListener('click',()=>UI.modal({
         title:'Enrol Learner',
-        body:`<div class="form-row">
-            <div class="field"><label>Child's name</label><input type="text" data-f="name" placeholder="Full name"></div>
-            <div class="field"><label>Age</label><input type="number" data-f="age" placeholder="e.g. 4"></div>
-          </div>
-          <div class="form-row">
-            <div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>Class</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
-          </div>
-          <div class="field"><label>Parent / guardian</label><select data-f="parent">${DB.parents.slice(0,20).map(p=>`<option>${esc(p.name)}</option>`).join('')}</select></div>`,
+        body:`<div style="max-height:62vh;overflow:auto;padding-right:6px">
+          <h4 style="margin:0 0 12px">Learner details</h4>
+          <div class="form-row"><div class="field"><label>Child's full name</label><input data-f="name" placeholder="Full name"></div><div class="field"><label>Date of birth</label><input type="date" data-f="dateOfBirth"></div></div>
+          <div class="form-row"><div class="field"><label>Gender</label><select data-f="childGender"><option value="BOY">Boy</option><option value="GIRL">Girl</option><option value="OTHER">Other</option></select></div><div class="field"><label>Disability to disclose?</label><select data-f="childHasDisability"><option value="false">No</option><option value="true">Yes</option></select></div></div>
+          <div class="field"><label>Disability details</label><textarea data-f="disabilityDetails" placeholder="Optional details and support requirements"></textarea></div>
+          <div class="divider"></div><h4 style="margin:0 0 12px">Placement</h4>
+          <div class="form-row"><div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Stage / grade</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div></div>
+          <div class="form-row"><div class="field"><label>Class</label><input data-f="className" value="A"></div><div class="field"><label>Preferred start date</label><input type="date" data-f="preferredStartDate"></div></div>
+          <div class="form-row"><div class="field"><label>Enrollment</label><select data-f="enrollmentType"><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option></select></div><div class="field"><label>Aftercare</label><select data-f="aftercareRequested"><option value="false">Not requested</option><option value="true">Requested</option></select></div></div>
+          <div class="form-row"><div class="field"><label>Previous school</label><input data-f="previousSchool"></div><div class="field"><label>Previous school phone</label><input type="tel" data-f="previousSchoolPhone"></div></div>
+          <div class="form-row"><div class="field"><label>Attended preschool?</label><select data-f="attendedPreschool"><option value="true">Yes</option><option value="false">No</option></select></div><div class="field"><label>How did they hear about us?</label><select data-f="referralSource"><option value="SOCIAL_MEDIA">Social media</option><option value="WORD_OF_MOUTH">Word of mouth</option><option value="RADIO">Radio</option><option value="OTHER">Other</option></select></div></div>
+          <div class="field"><label>Allergies / medical notes</label><textarea data-f="allergies" placeholder="Enter allergies or leave blank"></textarea></div>
+          <div class="divider"></div><h4 style="margin:0 0 12px">Parent / guardian</h4>
+          <div class="form-row"><div class="field"><label>Full name</label><input data-f="parentName"></div><div class="field"><label>Relationship</label><select data-f="relationship"><option>Mother</option><option>Father</option><option>Guardian</option><option>Other</option></select></div></div>
+          <div class="form-row"><div class="field"><label>Email</label><input type="email" data-f="parentEmail"></div><div class="field"><label>Mobile number</label><input type="tel" data-f="parentPhone"></div></div>
+          <div class="divider"></div><h4 style="margin:0 0 12px">Emergency contact and fee payer</h4>
+          <div class="form-row"><div class="field"><label>Emergency contact</label><input data-f="emergencyContactName"></div><div class="field"><label>Emergency phone</label><input type="tel" data-f="emergencyContactPhone"></div></div>
+          <div class="form-row"><div class="field"><label>Fee payer first name</label><input data-f="feePayerFirstName"></div><div class="field"><label>Fee payer last name</label><input data-f="feePayerLastName"></div></div>
+        </div>`,
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Enrol Learner</button>`,
         mount(r,close){
           r.querySelector('[data-x]').addEventListener('click',close);
           r.querySelector('[data-s]').addEventListener('click',async()=>{
             const v=UI.formVals(r);
-            if(!v.name){UI.toast('Enter the child\'s name first','alert');return;}
+            if(!v.name||!v.dateOfBirth||!v.parentName||!v.parentEmail||!v.parentPhone||!v.preferredStartDate||!v.emergencyContactName||!v.emergencyContactPhone||!v.feePayerFirstName||!v.feePayerLastName){UI.toast('Complete all required learner and guardian fields','alert');return;}
             const branch=DB.branches.find(x=>x.name===v.branch);
             if(!branch?.id){UI.toast('Select a valid campus first','alert');return;}
-            const age=Math.max(0,Math.min(18,Number(v.age)||4));
-            const dob=new Date(); dob.setFullYear(dob.getFullYear()-age);
+            const age=Math.max(0,Math.floor((Date.now()-new Date(v.dateOfBirth).getTime())/31557600000));
             const button=r.querySelector('[data-s]'); button.disabled=true;
             button.textContent='Enrolling…';
             try{
               const created=await MobsieApi.mutate('/api/students',{method:'POST',body:JSON.stringify({
-                branchId:branch.id,name:v.name,dateOfBirth:dob.toISOString().slice(0,10),grade:v.grade,
-                className:'A',parentName:v.parent,attendanceRate:100,enrollmentStatus:'ENROLLED'
+                branchId:branch.id,name:v.name,dateOfBirth:v.dateOfBirth,grade:v.grade,
+                className:v.className||'A',parentName:v.parentName,attendanceRate:0,enrollmentStatus:'ENROLLED',
+                onboardingProfile:{childGender:v.childGender,childHasDisability:v.childHasDisability==='true',disabilityDetails:v.disabilityDetails,
+                  parentEmail:v.parentEmail,parentPhone:v.parentPhone,relationship:v.relationship,preferredStartDate:v.preferredStartDate,
+                  enrollmentType:v.enrollmentType,aftercareRequested:v.aftercareRequested==='true',previousSchool:v.previousSchool,
+                  previousSchoolPhone:v.previousSchoolPhone,referralSource:v.referralSource,attendedPreschool:v.attendedPreschool==='true',
+                  allergies:v.allergies,emergencyContactName:v.emergencyContactName,emergencyContactPhone:v.emergencyContactPhone,
+                  feePayerFirstName:v.feePayerFirstName,feePayerLastName:v.feePayerLastName}
               })});
               const learner=created.data?.[0];
               DB.learners.unshift({id:learner?.id||'l-'+Date.now(),name:v.name,school:DB.SCHOOL_NAME,schoolId:'sch-1',
-                branch:v.branch,grade:v.grade,cls:'A',parent:v.parent,age,attendance:100,fees:'Paid',status:'Enrolled'});
+                branch:v.branch,grade:v.grade,cls:v.className||'A',parent:v.parentName,dateOfBirth:v.dateOfBirth,age,attendance:0,fees:'Not available',status:'Enrolled',onboardingProfile:learner?.onboardingProfile||{}});
               branch.students=(branch.students||0)+1;
               DB.recount(); DB.save();
               DB.log('Enrolled learner',v.name+' — '+v.branch,'ok');

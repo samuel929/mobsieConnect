@@ -63,16 +63,25 @@ window.Pages=window.Pages||{};
 
   Pages.documents={
     render(){
-      const folders=DB.docFolders;
+      const folderNames=[...new Set(['Policies','Compliance','HR','Finance','Safety','Academics',...(DB.docFolders||[]).map(f=>f.name),...DB.documentsList.map(d=>d.folder)].filter(Boolean))];
+      const folders=folderNames.map((name,index)=>({name,count:DB.documentsList.filter(d=>d.folder===name).length,tint:['t-blue','t-purple','t-green','t-orange','t-red','t-teal'][index%6]}));
+      DB.docFolders=folders;
       const tbl=UI.table({
         pageSize:8, rows:DB.documentsList,
+        onRow:d=>UI.drawer({
+          title:d.name,
+          body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.badge(d.folder,'blue')} ${UI.badge(d.shared||'All campuses','ink')}</div>
+            ${UI.dl([['File size',esc(d.size||'—')],['File type',esc(d.mimeType||'Document')],['Uploaded by',esc(d.by||'Unknown')],['Uploaded',esc(d.date||'—')],['Campus',esc(d.branchName||'All campuses')]])}
+            ${d.url?`<div class="divider"></div><div style="border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center"><span class="s-ic t-blue" style="width:54px;height:54px;border-radius:16px;display:grid;place-items:center;margin:0 auto 10px">${MCIcon('file')}</span><div class="small muted">This document is stored securely in Cloudinary.</div></div>`:''}`,
+          foot:d.url?`<a class="btn btn-primary" href="${esc(d.url)}" target="_blank" rel="noopener">${MCIcon('eye')} View document</a><a class="btn btn-ghost" href="${esc(d.url)}" download>${MCIcon('download')} Download</a>`:''
+        }),
         columns:[
           {key:'name',label:'Document',render:r=>`<div class="person-cell"><span class="f-ic t-blue" style="width:36px;height:36px;border-radius:10px;display:grid;place-items:center">${MCIcon('file')}</span><div class="pc-txt"><div class="cell-main">${esc(r.name)}</div><div class="cell-sub">${r.size}</div></div></div>`},
           {key:'folder',label:'Folder',render:r=>UI.badge(r.folder,'ink')},
           {key:'by',label:'Owner',render:r=>UI.personCell(r.by)},
           {key:'shared',label:'Shared with'},
           {key:'date',label:'Updated'},
-          {label:'',sortable:false,render:r=>`<span style="display:inline-flex;gap:4px">${r.url?`<a class="icon-btn" href="${esc(r.url)}" target="_blank" rel="noopener" title="Open document">${MCIcon('download')}</a>`:''}<button class="icon-btn">${MCIcon('campaigns')}</button><button class="icon-btn">${MCIcon('more')}</button></span>`},
+          {label:'',sortable:false,render:r=>r.url?`<a class="btn btn-ghost btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener" title="View document">${MCIcon('eye')} View</a>`:''},
         ],
       });
       Pages.documents._tid=UI.lastTableId();
@@ -101,7 +110,7 @@ window.Pages=window.Pages||{};
           r.querySelector('[data-s]').addEventListener('click',()=>{
             const v=UI.formVals(r);
             if(!v.name){UI.toast('Name the folder first','alert');return;}
-            DB.docFolders.push({name:v.name,count:0,tint:'t-teal'});
+            if(!DB.docFolders.some(folder=>folder.name.toLowerCase()===v.name.toLowerCase())) DB.docFolders.push({name:v.name,count:0,tint:'t-teal'});
             close();UI.toast('Folder created');App.refresh();
           });
         }
@@ -126,12 +135,15 @@ window.Pages=window.Pages||{};
             try{
               const fileData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
               const response=await MobsieApi.mutate('/api/uploads',{method:'POST',body:JSON.stringify({fileData,originalName:file.name,purpose:'documents'})});
-              DB.documentsList.unshift({name:file.name,folder:v.folder,size:(file.size/1024/1024).toFixed(1)+' MB',
-                by:'Thandi Admin',date:new Date().toLocaleDateString('en-ZA'),shared:v.shared,
-                url:response.data.url,publicId:response.data.publicId});
-              const fl=DB.docFolders.find(f=>f.name===v.folder); if(fl) fl.count++;
+              const saved=await MobsieApi.mutate('/api/documents',{method:'POST',body:JSON.stringify({
+                name:file.name,folder:v.folder,sharedWith:v.shared,fileUrl:response.data.url,
+                publicId:response.data.publicId,mimeType:file.type,bytes:file.size
+              })});
+              const document=saved.data?.[0];
+              DB.documentsList.unshift({id:document.id,name:document.name,folder:document.folder,size:(Number(document.bytes)/1024/1024).toFixed(1)+' MB',
+                bytes:Number(document.bytes),mimeType:document.mimeType,by:document.ownerName,date:new Date(document.createdAt).toLocaleDateString('en-ZA'),shared:document.sharedWith,
+                url:document.fileUrl,publicId:document.publicId,branchId:document.branchId||'',branchName:document.branchName||''});
               DB.log('Uploaded document',file.name,'ok');
-              DB.save();
               close();UI.toast(file.name+' saved to Cloudinary and Neon');App.refresh();
             }catch(error){UI.toast(error.message,'alert');}
           });

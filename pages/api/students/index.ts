@@ -12,6 +12,8 @@ type StudentRow = {
   parentName: string;
   attendanceRate: number;
   enrollmentStatus: string;
+  dateOfBirth: string;
+  onboardingProfile: Record<string, unknown>;
   totalCount: string;
 };
 
@@ -30,10 +32,10 @@ export default apiHandler<unknown>(
       const input = studentSchema.parse(req.body);
       await assertBranchAccess(input.branchId);
       const saved = await query<StudentRow>(
-        `INSERT INTO students (tenant_id,branch_id,name,date_of_birth,grade,class_name,parent_name,attendance_rate,enrollment_status)
-         VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9)
-         RETURNING id,name,'' AS "branchName",grade,class_name AS "className",parent_name AS "parentName",attendance_rate::float AS "attendanceRate",enrollment_status AS "enrollmentStatus",'1' AS "totalCount"`,
-        [user.tenantId,input.branchId,input.name,input.dateOfBirth,input.grade,input.className,input.parentName,input.attendanceRate,input.enrollmentStatus],
+        `INSERT INTO students (tenant_id,branch_id,name,date_of_birth,grade,class_name,parent_name,attendance_rate,enrollment_status,onboarding_profile)
+         VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10::jsonb)
+         RETURNING id,name,'' AS "branchName",date_of_birth::text AS "dateOfBirth",grade,class_name AS "className",parent_name AS "parentName",attendance_rate::float AS "attendanceRate",enrollment_status AS "enrollmentStatus",onboarding_profile AS "onboardingProfile",'1' AS "totalCount"`,
+        [user.tenantId,input.branchId,input.name,input.dateOfBirth,input.grade,input.className,input.parentName,input.attendanceRate,input.enrollmentStatus,JSON.stringify(input.onboardingProfile??{})],
       );
       res.status(201).json({ ok: true, data: saved.rows });
       return;
@@ -44,10 +46,10 @@ export default apiHandler<unknown>(
       if (!existing.rows[0]) throw new AppError(404, "STUDENT_NOT_FOUND", "That learner no longer exists.");
       await assertBranchAccess(input.branchId ?? existing.rows[0].branchId);
       const saved = await query<StudentRow>(
-        `UPDATE students SET branch_id=COALESCE($3,branch_id),name=COALESCE($4,name),date_of_birth=COALESCE($5::date,date_of_birth),grade=COALESCE($6,grade),class_name=COALESCE($7,class_name),parent_name=COALESCE($8,parent_name),attendance_rate=COALESCE($9,attendance_rate),enrollment_status=COALESCE($10,enrollment_status),updated_at=now()
+        `UPDATE students SET branch_id=COALESCE($3,branch_id),name=COALESCE($4,name),date_of_birth=COALESCE($5::date,date_of_birth),grade=COALESCE($6,grade),class_name=COALESCE($7,class_name),parent_name=COALESCE($8,parent_name),attendance_rate=COALESCE($9,attendance_rate),enrollment_status=COALESCE($10,enrollment_status),onboarding_profile=COALESCE($11::jsonb,onboarding_profile),updated_at=now()
          WHERE id=$1 AND tenant_id=$2
-         RETURNING id,name,'' AS "branchName",grade,class_name AS "className",parent_name AS "parentName",attendance_rate::float AS "attendanceRate",enrollment_status AS "enrollmentStatus",'1' AS "totalCount"`,
-        [input.id,user.tenantId,input.branchId ?? null,input.name ?? null,input.dateOfBirth ?? null,input.grade ?? null,input.className ?? null,input.parentName ?? null,input.attendanceRate ?? null,input.enrollmentStatus ?? null],
+         RETURNING id,name,'' AS "branchName",date_of_birth::text AS "dateOfBirth",grade,class_name AS "className",parent_name AS "parentName",attendance_rate::float AS "attendanceRate",enrollment_status AS "enrollmentStatus",onboarding_profile AS "onboardingProfile",'1' AS "totalCount"`,
+        [input.id,user.tenantId,input.branchId ?? null,input.name ?? null,input.dateOfBirth ?? null,input.grade ?? null,input.className ?? null,input.parentName ?? null,input.attendanceRate ?? null,input.enrollmentStatus ?? null,input.onboardingProfile?JSON.stringify(input.onboardingProfile):null],
       );
       res.status(200).json({ ok: true, data: saved.rows });
       return;
@@ -67,10 +69,10 @@ export default apiHandler<unknown>(
     const branchId = user.role === "TEACHER" ? user.branchId : one(req.query.branchId);
     const cursor = one(req.query.cursor);
     const result = await query<StudentRow>(
-      `SELECT s.id, s.name, b.name AS "branchName", s.grade,
+      `SELECT s.id, s.name, s.date_of_birth::text AS "dateOfBirth",b.name AS "branchName", s.grade,
         s.class_name AS "className", s.parent_name AS "parentName",
         s.attendance_rate::float AS "attendanceRate",
-        s.enrollment_status AS "enrollmentStatus", count(*) OVER()::text AS "totalCount"
+        s.enrollment_status AS "enrollmentStatus",s.onboarding_profile AS "onboardingProfile", count(*) OVER()::text AS "totalCount"
        FROM students s JOIN branches b ON b.id = s.branch_id
        WHERE s.tenant_id = $1
          AND ($2::uuid IS NULL OR s.branch_id = $2::uuid)

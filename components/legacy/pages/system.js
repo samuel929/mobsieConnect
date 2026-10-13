@@ -150,7 +150,7 @@ window.Pages=window.Pages||{};
               <div class="field"><label>Email address</label><input type="email" data-f="email" autocomplete="email" placeholder="name@mobsie.co.za"></div>
             </div>
             <div class="form-row" style="margin-top:15px">
-              <div class="field"><label>Role</label><select data-f="role"><option value="PRINCIPAL">Principal</option><option value="TEACHER">Teacher</option></select></div>
+              <div class="field"><label>Dashboard role</label><select data-f="dashboardRoleId">${DB.rolePerms.roles.map(role=>`<option value="${esc(role.id||'')}">${esc(role.name)}</option>`).join('')}</select></div>
               <div class="field"><label>Campus access</label><select data-f="branchId"><option value="">Entire school group</option>${DB.liveBranches().map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('')}</select></div>
             </div>
           </section>
@@ -189,10 +189,13 @@ window.Pages=window.Pages||{};
             if(v.password!==v.confirmPassword){UI.toast('Passwords do not match','alert');return;}
             const save=r.querySelector('[data-s]');save.disabled=true;save.textContent='Creating…';
             try{
-              const response=await MobsieApi.mutate('/api/users',{method:'POST',body:JSON.stringify({name:v.name,email:v.email,password:v.password,role:v.role,branchId:v.branchId||null})});
+              const selectedRole=DB.rolePerms.roles.find(role=>role.id===v.dashboardRoleId);
+              const authRole=selectedRole?.name==='Teacher'?'TEACHER':'PRINCIPAL';
+              const response=await MobsieApi.mutate('/api/users',{method:'POST',body:JSON.stringify({name:v.name,email:v.email,password:v.password,role:authRole,dashboardRoleId:v.dashboardRoleId||null,branchId:v.branchId||null})});
               const account=response.data[0];
-              DB.adminUsers.unshift({id:account.id,name:account.name,email:account.email,role:account.role==='PRINCIPAL'?'Principal':'Teacher',roleValue:account.role,branchId:account.branchId||'',scope:account.branchName||'Entire school group',last:'Never',status:'Active'});
-              DB.log('Created user',v.email+' — '+v.role,'ok');
+              DB.adminUsers.unshift({id:account.id,name:account.name,email:account.email,role:selectedRole?.name||'User',roleValue:account.role,branchId:account.branchId||'',scope:account.branchName||'Entire school group',last:'Never',status:'Active'});
+              if(selectedRole)selectedRole.users=Number(selectedRole.users||0)+1;
+              DB.log('Created user',v.email+' — '+(selectedRole?.name||authRole),'ok');
               close();UI.toast('User created. They can now log in with this password.');App.refresh();
             }catch(error){save.disabled=false;save.textContent='Create User';UI.toast(error.message,'alert');}
           });
@@ -223,17 +226,21 @@ window.Pages=window.Pages||{};
           </div></div>`;
     },
     mount(root){
-      root.addEventListener('click',e=>{
+      root.addEventListener('click',async e=>{
         const b=e.target.closest('[data-perm]');
         if(!b) return;
         const [ri,pi]=b.dataset.perm.split(':').map(Number);
         const r=DB.rolePerms.roles[ri];
-        r.grants[pi]=r.grants[pi]?0:1;
+        const previous=r.grants[pi],next=previous?0:1;
+        r.grants[pi]=next;
         b.className='perm-dot '+(r.grants[pi]?'yes':'no');
         b.innerHTML=MCIcon(r.grants[pi]?'check':'x');
-        DB.log((r.grants[pi]?'Granted permission':'Revoked permission'),DB.rolePerms.perms[pi]+' — '+r.name,'warn');
-        DB.save();
-        UI.toast(`${r.grants[pi]?'Granted':'Revoked'} “${DB.rolePerms.perms[pi]}” for ${r.name}`);
+        try{
+          await MobsieApi.mutate('/api/roles',{method:'PUT',body:JSON.stringify({roleId:r.id,permission:DB.rolePerms.perms[pi],granted:Boolean(next)})});
+          if(DB.currentRole?.id===r.id){DB.currentPermissions=DB.rolePerms.perms.filter((_,index)=>r.grants[index]);DB.currentRole.permissions=DB.currentPermissions;}
+          DB.log((next?'Granted permission':'Revoked permission'),DB.rolePerms.perms[pi]+' — '+r.name,'warn');
+          UI.toast(`${next?'Granted':'Revoked'} “${DB.rolePerms.perms[pi]}” for ${r.name}`);App.refresh();
+        }catch(error){r.grants[pi]=previous;b.className='perm-dot '+(previous?'yes':'no');b.innerHTML=MCIcon(previous?'check':'x');UI.toast(error.message||'Could not save permission','alert');}
       });
       root.querySelector('#newRole').addEventListener('click',()=>UI.modal({
         title:'Create Custom Role',
@@ -244,13 +251,16 @@ window.Pages=window.Pages||{};
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-purple" data-s>Create Role</button>`,
         mount(r,close){
           r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',()=>{
+          r.querySelector('[data-s]').addEventListener('click',async()=>{
             const nm=r.querySelector('input').value.trim();
             if(!nm){UI.toast('Name the role first','alert');return;}
             const base=DB.rolePerms.roles.find(x=>x.name===r.querySelector('select').value)||DB.rolePerms.roles[2];
-            DB.rolePerms.roles.push({name:nm,color:'#0D9488',users:0,grants:[...base.grants]});
-            DB.log('Created custom role',nm,'warn');
-            close();UI.toast('Role "'+nm+'" created — fine-tune it in the matrix');App.refresh();
+            try{
+              const response=await MobsieApi.mutate('/api/roles',{method:'POST',body:JSON.stringify({name:nm,baseRoleId:base.id})});
+              DB.rolePerms.roles.push({id:response.data.id,name:nm,color:'#0D9488',users:0,grants:[...base.grants]});
+              DB.log('Created custom role',nm,'warn');
+              close();UI.toast('Role "'+nm+'" created — fine-tune it in the matrix');App.refresh();
+            }catch(error){UI.toast(error.message||'Could not create role','alert');}
           });
         }
       }));

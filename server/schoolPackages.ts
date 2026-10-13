@@ -53,6 +53,21 @@ type Pricing = {
   stageFeesCents: Record<SchoolStage, number>;
 };
 
+const branchPricing2027: Record<'mamelodi' | 'soshanguve' | 'hebron', Pricing> = {
+  mamelodi: {
+    applicationFeeCents: 95_000, acceptanceFeeCents: 0,
+    stageFeesCents: { STAGE_1: 150_000, STAGE_2: 130_000, STAGE_3: 130_000, STAGE_4: 110_000, GRADE_R: 110_000 },
+  },
+  soshanguve: {
+    applicationFeeCents: 95_000, acceptanceFeeCents: 0,
+    stageFeesCents: { STAGE_1: 220_000, STAGE_2: 220_000, STAGE_3: 210_000, STAGE_4: 210_000, GRADE_R: 205_000 },
+  },
+  hebron: {
+    applicationFeeCents: 95_000, acceptanceFeeCents: 0,
+    stageFeesCents: { STAGE_1: 120_000, STAGE_2: 110_000, STAGE_3: 110_000, STAGE_4: 100_000, GRADE_R: 100_000 },
+  },
+};
+
 const pricing: Record<SchoolType, Pricing> = {
   PRIVATE_PRESCHOOL: {
     applicationFeeCents: 50_000,
@@ -111,8 +126,11 @@ export function bankingForBranch(branchName: string) {
   return { ...schoolFeesBanking, branchCode: code, accountNumber: schoolFeesBanking.accountsByBranchCode[code] ?? null };
 }
 
-export function schoolPrice(schoolType: SchoolType, schoolStage: SchoolStage) {
-  const selected = pricing[schoolType];
+export function schoolPrice(schoolType: SchoolType, schoolStage: SchoolStage, branchName = '') {
+  const branch = normalize(branchName);
+  const branchKey = (Object.keys(branchPricing2027) as Array<keyof typeof branchPricing2027>)
+    .find((candidate) => branch.includes(candidate));
+  const selected = branchKey ? branchPricing2027[branchKey] : pricing[schoolType];
   return {
     applicationFeeCents: selected.applicationFeeCents,
     acceptanceFeeCents: selected.acceptanceFeeCents,

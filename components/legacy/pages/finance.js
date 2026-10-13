@@ -210,52 +210,52 @@ window.Pages=window.Pages||{};
   /* ---------- Statements ---------- */
   Pages.statements={
     render(){
-      const rows=DB.liveBranches().map((b,i)=>({
-        school:b.name, period:'May 2026', invoiced:b.revenue, collected:Math.round(b.revenue*(0.86+(i%5)*0.015)),
-        fees:Math.round(b.revenue*0.029), payout:0, status:i<2?'Paid':(i<3?'Processing':'Scheduled'),
-      })).map(r=>({...r,payout:r.collected-r.fees}));
+      const now=new Date();
+      const periodKey=now.toISOString().slice(0,7);
+      const period=now.toLocaleDateString('en-ZA',{month:'long',year:'numeric'});
+      const rows=DB.liveBranches().map((b)=>{
+        const same=(row)=>String(row.branch||row.school||'').toLowerCase()===String(b.name).toLowerCase();
+        const invoices=(DB.invoices||[]).filter(same);
+        const payments=(DB.payments||[]).filter(same).filter(p=>['successful','paid','complete'].includes(String(p.status||'').toLowerCase()));
+        const invoiced=invoices.reduce((sum,row)=>sum+Number(row.amount||0),0);
+        const collected=payments.reduce((sum,row)=>sum+Number(row.amount||0),0);
+        return {branchId:b.id,school:b.name,period,periodKey,invoiced,collected,outstanding:Math.max(0,invoiced-collected),invoiceCount:invoices.length,paymentCount:payments.length};
+      });
+      const totalInvoiced=rows.reduce((sum,row)=>sum+row.invoiced,0),totalCollected=rows.reduce((sum,row)=>sum+row.collected,0);
       const tbl=UI.table({
         pageSize:8, rows,
         onRow:st=>UI.drawer({
           title:'Statement — '+st.school,
           body:`
-            <div style="display:flex;gap:8px;margin-bottom:18px">${UI.badge(st.period,'purple')} ${UI.status(st.status)}</div>
-            ${UI.dl([['Invoiced',R(st.invoiced)],['Collected',R(st.collected)],['Platform & gateway fees','−'+R(st.fees)],['Net payout',`<b style="color:var(--green-600)">${R(st.payout)}</b>`],['Payout account','FNB ····8821'],['Payout date','1 Jun 2026']])}
+            <div style="display:flex;gap:8px;margin-bottom:18px">${UI.badge(st.period,'purple')}</div>
+            ${UI.dl([['Invoices',F(st.invoiceCount)],['Successful payments',F(st.paymentCount)],['Invoiced',R(st.invoiced)],['Collected',R(st.collected)],['Outstanding',`<b style="color:${st.outstanding?'var(--red-600)':'var(--green-600)'}">${R(st.outstanding)}</b>`]])}
             <div class="divider"></div>
-            ${UI.meterRow('Collection rate',Math.round(st.collected/st.invoiced*100))}`,
-          foot:`<button class="btn btn-ghost">${MCIcon('download')} Download PDF</button><button class="btn btn-primary">${MCIcon('campaigns')} Email to Owner</button>`
+            ${UI.meterRow('Collection rate',st.invoiced?Math.round(st.collected/st.invoiced*100):0)}`,
+          foot:`<a class="btn btn-primary" href="/api/statements/pdf?branch=${encodeURIComponent(st.branchId)}&period=${encodeURIComponent(st.periodKey)}">${MCIcon('download')} Download PDF</a>`
         }),
         columns:[
           {key:'school',label:'Campus',render:r=>`<span class="cell-main">${esc(r.school)}</span>`},
           {key:'period',label:'Period'},
           {key:'invoiced',label:'Invoiced',num:true,render:r=>R(r.invoiced)},
           {key:'collected',label:'Collected',num:true,render:r=>R(r.collected)},
-          {key:'fees',label:'Fees',num:true,render:r=>'−'+R(r.fees)},
-          {key:'payout',label:'Net payout',num:true,render:r=>`<b style="color:var(--green-600)">${R(r.payout)}</b>`},
-          {key:'status',label:'Payout',render:r=>UI.status(r.status)},
+          {key:'outstanding',label:'Outstanding',num:true,render:r=>`<b style="color:${r.outstanding?'var(--red-600)':'var(--green-600)'}">${R(r.outstanding)}</b>`},
+          {label:'PDF',sortable:false,render:r=>`<a class="icon-btn" href="/api/statements/pdf?branch=${encodeURIComponent(r.branchId)}&period=${encodeURIComponent(r.periodKey)}" title="Download PDF">${MCIcon('download')}</a>`},
         ],
       });
       return `
         ${UI.pageHead('Statements','Monthly campus statements and payout reconciliation.',
-          `<button class="select">${MCIcon('calendar')} May 2026 ${MCIcon('chevDown')}</button>
-           <button class="btn btn-primary" id="stDlAll">${MCIcon('download')} Download All</button>`)}
+          `<span class="select">${MCIcon('calendar')} ${esc(period)}</span>
+           <a class="btn btn-primary" href="/api/statements/pdf?period=${encodeURIComponent(periodKey)}">${MCIcon('download')} Download All PDF</a>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'statements',tint:'t-purple',label:'Statements Generated',value:String(DB.liveBranches().length),deltaHtml:`<span class="delta flat">1 per campus · May</span>`})}
-          ${UI.statCard({icon:'payments',tint:'t-green',label:'Total Collected',value:Rk(DB.totals.mrr*0.87),deltaHtml:UI.delta(9.1,'up','vs April')})}
-          ${UI.statCard({icon:'wallet',tint:'t-blue',label:'Payouts Scheduled',value:Rk(DB.totals.mrr*0.84),deltaHtml:`<span class="delta flat">runs 1 Jun</span>`})}
-          ${UI.statCard({icon:'discounts',tint:'t-amber',label:'Platform Fees',value:Rk(DB.totals.mrr*0.029),deltaHtml:`<span class="delta flat">2.9% blended</span>`})}
+          ${UI.statCard({icon:'statements',tint:'t-purple',label:'Campus Statements',value:String(rows.length),deltaHtml:`<span class="delta flat">${esc(period)}</span>`})}
+          ${UI.statCard({icon:'invoices',tint:'t-blue',label:'Total Invoiced',value:Rk(totalInvoiced),deltaHtml:`<span class="delta flat">${F((DB.invoices||[]).length)} invoices</span>`})}
+          ${UI.statCard({icon:'payments',tint:'t-green',label:'Total Collected',value:Rk(totalCollected),deltaHtml:`<span class="delta flat">successful payments</span>`})}
+          ${UI.statCard({icon:'alert',tint:'t-amber',label:'Outstanding',value:Rk(Math.max(0,totalInvoiced-totalCollected)),deltaHtml:`<span class="delta flat">current records</span>`})}
         </div>
-        <div class="card"><div class="card-head"><div><h3>Campus statements — May 2026</h3></div></div>
+        <div class="card"><div class="card-head"><div><h3>Campus statements — ${esc(period)}</h3></div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
     },
-    mount(root){
-      root.querySelector('#stDlAll').addEventListener('click',()=>UI.downloadCSV('mobsie-statements-may-2026.csv',
-        ['Campus','Period','Invoiced (R)','Collected (R)','Fees (R)','Net payout (R)','Status'],
-        DB.liveBranches().map((b,i)=>{
-          const col=Math.round(b.revenue*(0.86+(i%5)*0.015)), fee=Math.round(b.revenue*0.029);
-          return [b.name,'May 2026',b.revenue,col,fee,col-fee,i<2?'Paid':(i<3?'Processing':'Scheduled')];
-        })));
-    }
+    mount(){}
   };
 
   /* ---------- Discounts ---------- */

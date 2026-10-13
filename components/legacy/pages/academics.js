@@ -1868,64 +1868,18 @@ Pages['daily-activity'] = {
   /* ---------- Learning ---------- */
   Pages.homework={
     render(){
-      const items=DB.homeworkList;
       return `
-        ${UI.pageHead('Learning','Learning activities set by teachers, with live completion tracking for parents.',
-          `<button class="btn btn-primary" id="hwNew">${MCIcon('plus')} New Activity</button>`)}
-        <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'homework',tint:'t-purple',label:'Active Activities',value:String(items.length+26),deltaHtml:UI.delta(0,'up','this week').replace('0%','8')})}
-          ${UI.statCard({icon:'check',tint:'t-green',label:'Avg Completion',value:'78%',deltaHtml:UI.delta(5.2,'up','vs last week')})}
-          ${UI.statCard({icon:'parents',tint:'t-blue',label:'Parent Views',value:'2,408',deltaHtml:UI.delta(11,'up','this week')})}
-          ${UI.statCard({icon:'clock',tint:'t-amber',label:'Due This Week',value:'18',deltaHtml:`<span class="delta flat">across 42 classes</span>`})}
-        </div>
-        <div class="grid cards-3">${items.map(h=>`
-          <div class="card" style="padding:18px">
-            <div style="display:flex;align-items:flex-start;gap:11px">
-              <span class="s-ic ${h.tint}" style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center">${MCIcon('homework')}</span>
-              <div style="min-width:0;flex:1">
-                <div style="font-weight:700;color:var(--ink-900);line-height:1.3">${esc(h.title)}</div>
-                <div class="small muted" style="margin-top:2px">${esc(h.cls)} · ${esc(h.school)}</div>
-              </div>
-              ${UI.badge(h.subject,h.tint.replace('t-',''))}
-            </div>
-            <div class="divider" style="margin:14px 0 10px"></div>
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              ${UI.avatar(h.teacher,'sm')}<span class="small" style="font-weight:600;color:var(--ink-600)">${esc(h.teacher)}</span>
-              <span class="small muted" style="margin-left:auto;display:inline-flex;align-items:center;gap:5px">${MCIcon('calendar')} Due ${h.due}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span class="meter ${h.done<50?'amber':''}"><i style="width:${h.done}%"></i></span>
-              <b class="small" style="font-variant-numeric:tabular-nums">${h.done}%</b>
-            </div>
-          </div>`).join('')}</div>`;
-    },
-    mount(root){
-      root.querySelector('#hwNew').addEventListener('click',()=>UI.modal({
-        title:'New Learning Activity',
-        body:`<div class="field"><label>Activity title</label><input type="text" data-f="title" placeholder="e.g. Colour the seasons"></div>
-          <div class="form-row">
-            <div class="field"><label>Campus</label><select data-f="school">${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>Class</label><select data-f="cls">${DB.GRADES.map(g=>`<option>${g} A</option>`).join('')}</select></div>
+        ${UI.pageHead('Learning','Digital learning tools for teachers, learners and families.')}
+        <div class="card" style="min-height:430px;display:grid;place-items:center;padding:48px">
+          <div style="max-width:560px;text-align:center">
+            <span class="s-ic t-purple" style="width:72px;height:72px;border-radius:22px;display:grid;place-items:center;margin:0 auto 22px">${MCIcon('homework')}</span>
+            <span class="badge t-purple" style="margin-bottom:14px">Coming soon</span>
+            <h2 style="font-size:28px;margin:0 0 12px;color:var(--ink-900)">Learning is on the way</h2>
+            <p class="muted" style="font-size:16px;line-height:1.65;margin:0">We’re building a focused space for classroom activities, learning resources and parent progress updates.</p>
           </div>
-          <div class="form-row">
-            <div class="field"><label>Subject</label><select data-f="subject"><option>Numeracy</option><option>Literacy</option><option>Life Skills</option><option>Art</option></select></div>
-            <div class="field"><label>Due</label><input type="text" data-f="due" value="May 23"></div>
-          </div>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Publish to Parents</button>`,
-        mount(r,close){
-          r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',()=>{
-            const v=UI.formVals(r);
-            if(!v.title){UI.toast('Give the activity a title first','alert');return;}
-            const tints={Numeracy:'t-orange',Literacy:'t-purple','Life Skills':'t-green',Art:'t-pink'};
-            DB.homeworkList.unshift({title:v.title,cls:v.cls,school:v.school,teacher:'Thandi Admin',
-              due:v.due,done:0,subject:v.subject,tint:tints[v.subject]||'t-blue'});
-            DB.log('Published learning activity',v.title+' — '+v.cls,'ok');
-            close();UI.toast('Activity published — parents notified in the app');App.refresh();
-          });
-        }
-      }));
-    }
+        </div>`;
+    },
+    mount(){}
   };
 
   /* ---------- Reports ---------- */
@@ -1934,15 +1888,25 @@ Pages['daily-activity'] = {
       const stats=DB.reportStats||{year:new Date().getFullYear(),term:null,completion:[],monthly:[]};
       const completion=stats.completion||[];
       const monthly=stats.monthly||[];
+      const learners=completion.reduce((sum,row)=>sum+Number(row.learners||0),0);
+      const completed=completion.reduce((sum,row)=>sum+Number(row.completed||0),0);
+      const overall=learners?Math.round(completed/learners*100):0;
+      const records=monthly.reduce((sum,row)=>sum+Number(row.value||0),0);
       return `
         ${UI.pageHead('Reports','Report cards, milestone tracking and operational reporting.',
           `<button class="btn btn-ghost" id="repDl">${MCIcon('download')} Download Centre</button>
            <button class="btn btn-purple" id="repGen">${MCIcon('sparkle')} Generate Report</button>`)}
-        <div class="grid" style="grid-template-columns:1.5fr 1fr;margin-bottom:20px" id="repTop">
-          ${UI.card('Report card completion by grade',`
-            ${completion.length?completion.map(row=>UI.meterRow(`${row.grade} (${row.completed}/${row.learners})`,Number(row.percentage||0),'purple')).join(''):'<div class="empty-state" style="padding:55px 20px"><b>No report-card records</b><p>Add academic records to calculate completion.</p></div>'}`,
-            {sub:`${stats.term?'Term '+stats.term:'No term recorded'} · ${stats.year} · learners with academic records`})}
-          ${UI.card('Academic records added',`<div class="chart-box">${Charts.bars({labels:monthly.map(row=>row.label),series:[{name:'Records',color:'#7C3AED',data:monthly.map(row=>Number(row.value||0))}],height:208,capLabels:true})}</div>`,{sub:'Last six months · saved in Neon'})}
+        <div class="grid cards-4" style="margin-bottom:20px">
+          ${UI.statCard({icon:'reports',tint:'t-purple',label:'Report Completion',value:overall+'%',deltaHtml:`<span class="delta flat">${F(completed)} of ${F(learners)} learners</span>`})}
+          ${UI.statCard({icon:'learners',tint:'t-blue',label:'Learners Included',value:F(learners),deltaHtml:`<span class="delta flat">active enrolments</span>`})}
+          ${UI.statCard({icon:'check',tint:'t-green',label:'Completed Records',value:F(completed),deltaHtml:`<span class="delta flat">${stats.term?'Term '+stats.term:'latest term'}</span>`})}
+          ${UI.statCard({icon:'trendUp',tint:'t-orange',label:'Records Added',value:F(records),deltaHtml:`<span class="delta flat">last six months</span>`})}
+        </div>
+        <div class="grid" style="grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);margin-bottom:20px" id="repTop">
+          <div class="card" style="padding:22px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px"><div><h3 style="margin:0">Completion by grade</h3><div class="small muted" style="margin-top:5px">${stats.term?'Term '+stats.term:'Latest term'} · ${stats.year}</div></div>${UI.badge(overall+'% overall','purple')}</div>
+            ${completion.length?completion.map(row=>`<div style="padding:12px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>${esc(row.grade)}</b><span class="small muted">${F(row.completed)} / ${F(row.learners)}</span></div>${UI.meterRow('',Number(row.percentage||0),'purple')}</div>`).join(''):'<div class="empty-state" style="padding:55px 20px"><b>No report-card records</b><p>Add academic records to calculate completion.</p></div>'}
+          </div>
+          ${UI.card('Academic activity',`<div class="chart-box">${Charts.bars({labels:monthly.map(row=>row.label),series:[{name:'Records',color:'#7C3AED',data:monthly.map(row=>Number(row.value||0))}],height:246,capLabels:true})}</div>`,{sub:'Records saved to Neon in the last six months'})}
         </div>
         <div class="card"><div class="card-head"><div><h3>Report runs</h3></div></div>
           <div class="card-body" style="padding-top:8px">

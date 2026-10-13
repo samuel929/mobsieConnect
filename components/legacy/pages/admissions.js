@@ -737,6 +737,15 @@ window.Pages=window.Pages||{};
     `,
 
     foot: `
+      <a
+        class="btn btn-ghost"
+        href="/api/applications/${encodeURIComponent(applicationIdentifier)}/pdf"
+        download
+      >
+        ${MCIcon("download")}
+        Download PDF
+      </a>
+
       <button
         class="btn btn-danger"
         id="apWaitlist"
@@ -930,7 +939,13 @@ function formatDocumentSize(bytes) {
         {key:'date',label:'Submitted'},
         {key:'docs',label:'Docs',num:true,render:r=>`${r.docs}/10`},
         {key:'status',label:'Status',render:r=>UI.status(r.status)},
-        {label:'',sortable:false,render:r=>`<button class="icon-btn">${MCIcon('chevRight')}</button>`},
+        {label:'Actions',sortable:false,render:r=>{
+          const identifier=r.dbId||r.databaseId||r.applicationId||r.id;
+          return `<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" data-app-view="${esc(identifier)}">${MCIcon('eye')} View</button>
+            <a class="btn btn-ghost btn-sm" data-app-pdf href="/api/applications/${encodeURIComponent(identifier)}/pdf" download>${MCIcon('download')} PDF</a>
+          </span>`;
+        }},
       ],
     });
     Pages.applications._tid=UI.lastTableId();
@@ -970,6 +985,12 @@ function formatDocumentSize(bytes) {
     render:renderApplications,
     mount(root){
       root.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{aState.tab=b.dataset.tab;App.route='applications';document.getElementById('content').innerHTML=renderApplications();UI.hydrate();Pages.applications.mount(document.getElementById('content'));}));
+      root.querySelectorAll('[data-app-view]').forEach(button=>button.addEventListener('click',(event)=>{
+        event.preventDefault();event.stopPropagation();
+        const application=(DB.applications||[]).find(item=>String(item.dbId||item.databaseId||item.applicationId||item.id)===String(button.dataset.appView));
+        if(application) openApplication(application);
+      }));
+      root.querySelectorAll('[data-app-pdf]').forEach(link=>link.addEventListener('click',(event)=>event.stopPropagation()));
       const na=root.querySelector('#newApp');
       if(na) na.addEventListener('click',()=>UI.modal({
         title:'New Application',

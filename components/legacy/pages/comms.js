@@ -1368,8 +1368,18 @@ Pages.messages = {
   /* ---------- Newsletters ---------- */
   Pages.newsletters={
     render(){
+      const sent=DB.newsletters.filter(n=>n.status==='Sent');
+      const recipients=sent.reduce((sum,n)=>sum+Number(n.recipients||0),0);
+      const avgOpen=sent.length?Math.round(sent.reduce((sum,n)=>sum+Number(n.openRate||0),0)/sent.length):0;
       const tbl=UI.table({
         pageSize:8, rows:DB.newsletters,
+        onRow:n=>UI.drawer({
+          title:n.title,
+          body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.status(n.status)} ${UI.badge(n.audience||'All campuses','purple')}</div>
+            ${UI.dl([['Published',esc(n.sent||'—')],['Recipients',n.recipients?F(n.recipients):'Not tracked'],['Open rate',n.openRate?`${n.openRate}%`:'Not tracked']])}
+            <div class="divider"></div><h4 style="margin:0 0 8px">Newsletter message</h4><div style="white-space:pre-wrap;line-height:1.65;color:var(--ink-700)">${esc(n.body||n.message||'No message content is available.')}</div>`,
+          foot:n.url?`<a class="btn btn-primary" href="${esc(n.url)}" target="_blank" rel="noopener">${MCIcon('eye')} Open attachment</a>`:''
+        }),
         columns:[
           {key:'title',label:'Newsletter',render:r=>`<div class="cell-main">${esc(r.title)}</div><div class="cell-sub">${esc(r.audience)}</div>`},
           {key:'sent',label:'Sent'},
@@ -1383,10 +1393,10 @@ Pages.messages = {
         ${UI.pageHead('Newsletters','Beautiful branded newsletters delivered to the app and inbox.',
           `<button class="btn btn-purple" id="newNl">${MCIcon('plus')} Compose Newsletter</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'newsletters',tint:'t-purple',label:'Sent This Term',value:String(DB.newsletters.filter(n=>n.status==='Sent').length+9),deltaHtml:UI.delta(8,'up','vs last term')})}
-          ${UI.statCard({icon:'eye',tint:'t-blue',label:'Avg Open Rate',value:'71%',deltaHtml:UI.delta(3.1,'up','vs last term')})}
-          ${UI.statCard({icon:'parents',tint:'t-green',label:'Subscribers',value:F(DB.totals.parents),deltaHtml:`<span class="delta flat">auto-synced with parents</span>`})}
-          ${UI.statCard({icon:'star',tint:'t-amber',label:'Best Performer',value:'84%',deltaHtml:`<span class="delta flat">Sports Day — Soshanguve</span>`})}
+          ${UI.statCard({icon:'newsletters',tint:'t-purple',label:'Published',value:String(sent.length),deltaHtml:`<span class="delta flat">saved in Neon</span>`})}
+          ${UI.statCard({icon:'eye',tint:'t-blue',label:'Avg Open Rate',value:avgOpen?avgOpen+'%':'—',deltaHtml:`<span class="delta flat">${avgOpen?'tracked sends':'analytics not yet available'}</span>`})}
+          ${UI.statCard({icon:'parents',tint:'t-green',label:'Recipients',value:recipients?F(recipients):'—',deltaHtml:`<span class="delta flat">${recipients?'across published newsletters':'not yet tracked'}</span>`})}
+          ${UI.statCard({icon:'file',tint:'t-amber',label:'Drafts',value:String(DB.newsletters.filter(n=>n.status==='Draft').length),deltaHtml:`<span class="delta flat">not published</span>`})}
         </div>
         <div class="card"><div class="card-head"><div><h3>All newsletters</h3></div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
@@ -1404,8 +1414,17 @@ Pages.messages = {
   /* ---------- Push notifications ---------- */
   Pages.push={
     render(){
+      const delivered=DB.pushLog.reduce((sum,n)=>sum+Number(n.delivered||0),0);
+      const opened=DB.pushLog.reduce((sum,n)=>sum+Number(n.opened||0),0);
+      const deliveredRows=DB.pushLog.filter(n=>String(n.status).toLowerCase()==='delivered');
       const tbl=UI.table({
         pageSize:8, rows:DB.pushLog,
+        onRow:n=>UI.drawer({
+          title:n.title,
+          body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.status(n.status)} ${UI.badge(n.audience||'All campuses','orange')}</div>
+            ${UI.dl([['Sent / scheduled',esc(n.time||'—')],['Delivered',F(Number(n.delivered||0))],['Opened',F(Number(n.opened||0))],['Open rate',n.delivered?Math.round(n.opened/n.delivered*100)+'%':'—']])}
+            <div class="divider"></div><h4 style="margin:0 0 8px">Notification message</h4><div style="white-space:pre-wrap;line-height:1.65;color:var(--ink-700)">${esc(n.body||n.message||n.title)}</div>`
+        }),
         columns:[
           {key:'title',label:'Notification',render:r=>`<div class="cell-main">${esc(r.title)}</div><div class="cell-sub">${esc(r.audience)}</div>`},
           {key:'time',label:'Sent'},
@@ -1418,10 +1437,10 @@ Pages.messages = {
         ${UI.pageHead('Push Notifications','Instant alerts straight to parents\' phones.',
           `<button class="btn btn-primary" id="newPush">${MCIcon('push')} Send Push</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'push',tint:'t-orange',label:'Sent This Month',value:F(DB.pushLog.length+81),deltaHtml:UI.delta(12,'up','vs April')})}
-          ${UI.statCard({icon:'check',tint:'t-green',label:'Delivery Rate',value:'99.2%',deltaHtml:`<span class="delta flat">812 devices</span>`})}
-          ${UI.statCard({icon:'eye',tint:'t-purple',label:'Avg Open Rate',value:'74%',deltaHtml:UI.delta(2.4,'up','vs April')})}
-          ${UI.statCard({icon:'zap',tint:'t-blue',label:'Avg Delivery Time',value:'1.8s',deltaHtml:`<span class="delta flat">across campuses</span>`})}
+          ${UI.statCard({icon:'push',tint:'t-orange',label:'Notifications',value:F(DB.pushLog.length),deltaHtml:`<span class="delta flat">${deliveredRows.length} delivered</span>`})}
+          ${UI.statCard({icon:'check',tint:'t-green',label:'Delivered',value:F(delivered),deltaHtml:`<span class="delta flat">recorded devices</span>`})}
+          ${UI.statCard({icon:'eye',tint:'t-purple',label:'Opened',value:F(opened),deltaHtml:`<span class="delta flat">${delivered?Math.round(opened/delivered*100)+'% open rate':'no delivery data'}</span>`})}
+          ${UI.statCard({icon:'clock',tint:'t-blue',label:'Scheduled',value:String(DB.pushLog.filter(n=>n.status==='Scheduled').length),deltaHtml:`<span class="delta flat">waiting to send</span>`})}
         </div>
         <div class="card"><div class="card-head"><div><h3>Recent notifications</h3></div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
@@ -1433,7 +1452,7 @@ Pages.messages = {
         });
         const delivery=result.data?.sent??0;
         const n=audSize(v.aud);
-        DB.pushLog.unshift({title:v.subject,audience:v.aud,time:v.scheduledAt?new Date(v.scheduledAt).toLocaleString():'Just now',
+        DB.pushLog.unshift({title:v.subject,body:v.body||v.subject,message:v.body||v.subject,audience:v.aud,time:v.scheduledAt?new Date(v.scheduledAt).toLocaleString():'Just now',
           delivered:delivery,opened:0,status:v.scheduledAt?'Scheduled':'Delivered'});
         DB.save();
       }));
