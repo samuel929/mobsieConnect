@@ -94,8 +94,9 @@ export default apiHandler<Record<string, unknown>>(
         `SELECT state FROM control_centre_state WHERE tenant_id=$1 LIMIT 1`,
         [parent.tenantId],
       ),
-      query(`SELECT id,title,body,audience,published_at::text AS "publishedAt" FROM newsletters
+      query(`SELECT id,title,body,audience,content,published_at::text AS "publishedAt" FROM newsletters
              WHERE tenant_id=$1 AND (branch_id IS NULL OR branch_id=ANY(SELECT branch_id FROM students WHERE parent_account_id=$2))
+               AND status='SENT'
              ORDER BY published_at DESC LIMIT 100`,[parent.tenantId,parent.id]),
     ]);
     const state = controlCentre.rows[0]?.state;

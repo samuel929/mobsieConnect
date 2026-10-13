@@ -208,7 +208,7 @@
       window.DB.newsletters=newsletters.map((newsletter)=>({
         id:newsletter.id,title:newsletter.title,subject:newsletter.title,body:newsletter.body||'',message:newsletter.body||'',
         audience:newsletter.audience||'All campuses',sent:newsletter.publishedAt?new Date(newsletter.publishedAt).toLocaleString('en-ZA'):'',
-        publishedAt:newsletter.publishedAt,recipients:0,openRate:0,status:'Sent',
+        publishedAt:newsletter.publishedAt,recipients:0,openRate:0,status:String(newsletter.status||'SENT').toLowerCase()==='draft'?'Draft':'Sent',content:newsletter.content||{},
       }));
     }
     if(roleData?.roles){

@@ -178,9 +178,7 @@
     $('#tbChat').addEventListener('click',()=>App.go('messages'));
     $('#tbUser').addEventListener('click',e=>{
       UI.menu(e.currentTarget,[
-        {icon:'users',label:'My profile',onClick:()=>UI.toast('Profile coming soon')},
-        {icon:'settings',label:'Preferences',onClick:()=>App.go('settings')},
-        '-',
+        {icon:'users',label:'Profile',onClick:()=>UI.toast('Profile coming soon')},
         {icon:'logout',label:'Sign out',onClick:async()=>{await fetch('/api/auth/logout',{method:'POST'});location.href='/login';}},
       ],{align:'right'});
     });

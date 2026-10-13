@@ -1365,6 +1365,47 @@ Pages.messages = {
     });
   }
 
+  function newsletterStudio(){
+    const defaultIntro='The latest highlights, opportunities and moments from your Mobsie community — all in one place.';
+    UI.modal({
+      title:'Newsletter Studio',
+      body:`<div class="newsletter-studio">
+        <div class="newsletter-studio__intro"><div><h2>Create a campus newsletter</h2><p>A repeatable Mobsie structure — populate the fields, review the email, and send.</p></div><div class="newsletter-steps"><b>01 Content</b><span>→</span><span>02 Review</span><span>→</span><span>03 Send</span></div></div>
+        <div class="newsletter-studio__grid">
+          <section class="newsletter-editor"><div class="newsletter-panel-head"><h3>Newsletter details</h3><span>* Required fields</span></div><div class="newsletter-editor__body">
+            <div class="newsletter-section-label">Delivery</div><div class="form-row"><div class="field"><label>Send to *</label><select data-f="audience"><option>All campuses</option>${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Subject line *</label><input data-f="subject" value="What's happening at Mobsie"></div></div>
+            <div class="newsletter-section-label">Header &amp; hero</div><div class="field"><label>Header image <span class="muted">(optional)</span></label><label class="newsletter-upload">${MCIcon('upload')}<span><b>Upload a header banner</b><small>Recommended: 1200 × 320 px</small></span><input type="file" data-img="header" accept="image/png,image/jpeg,image/webp"></label></div>
+            <div class="field"><label>Hero heading *</label><input data-f="heroTitle" value="Your campus, in the know."></div><div class="field"><label>Intro copy *</label><textarea data-f="intro">${defaultIntro}</textarea></div>
+            <div class="newsletter-section-label">Featured story</div><div class="field"><label>Featured image</label><label class="newsletter-upload">${MCIcon('gallery')}<span><b>Add a featured image</b><small>Recommended: 1200 × 700 px</small></span><input type="file" data-img="feature" accept="image/png,image/jpeg,image/webp"></label></div>
+            <div class="field"><label>Feature headline</label><input data-f="featureTitle" value="There's more to discover this week"></div><div class="field"><label>Feature copy</label><textarea data-f="featureCopy">Share the update that matters most and give your community a clear next step.</textarea></div>
+            <div class="form-row"><div class="field"><label>Button label</label><input data-f="ctaText" value="Open Mobsie"></div><div class="field"><label>Button link</label><input type="url" data-f="ctaLink" value="https://mobsie.app"></div></div>
+            <div class="newsletter-section-label">Footer</div><div class="field"><label>Footer message</label><textarea data-f="footer">You are receiving this email because you are part of the Mobsie community.</textarea></div>
+          </div></section>
+          <section class="newsletter-preview-panel"><div class="newsletter-panel-head"><h3>Live email preview</h3><span class="newsletter-device">Desktop · 600px</span></div><div class="newsletter-preview-wrap"><article class="newsletter-email">
+            <header><b>mobsie</b><span>Campus news &amp; updates</span></header><div class="newsletter-hero" data-preview="hero"><h2 data-preview="heroTitle">Your campus, in the know.</h2></div>
+            <div class="newsletter-email__body"><div class="newsletter-kicker">Mobsie weekly</div><h2 data-preview="featureTitle">There's more to discover this week</h2><p data-preview="intro">${defaultIntro}</p><div class="newsletter-feature-image" data-preview="featureImage"><span>M</span></div><p data-preview="featureCopy">Share the update that matters most and give your community a clear next step.</p><a data-preview="cta">Open Mobsie</a></div>
+            <footer><b>mobsie</b><p data-preview="footer">You are receiving this email because you are part of the Mobsie community.</p><small>Manage preferences · Unsubscribe</small></footer>
+          </article></div></section>
+        </div></div>`,
+      foot:`<button class="btn btn-ghost" data-d>Save draft</button><button class="btn btn-primary" data-s>Send newsletter →</button>`,
+      mount(root,close){
+        const form=root.querySelector('.newsletter-studio');
+        const value=name=>form.querySelector(`[data-f="${name}"]`).value.trim();
+        const preview=(name,text)=>{const node=form.querySelector(`[data-preview="${name}"]`);if(node)node.textContent=text;};
+        const sync=()=>{preview('heroTitle',value('heroTitle')||'Your campus, in the know.');preview('featureTitle',value('featureTitle')||'Newsletter update');preview('intro',value('intro'));preview('featureCopy',value('featureCopy'));preview('footer',value('footer'));const cta=form.querySelector('[data-preview="cta"]');cta.textContent=value('ctaText')||'Open Mobsie';cta.href=value('ctaLink')||'#';};
+        form.querySelectorAll('[data-f]').forEach(input=>input.addEventListener('input',sync));
+        form.querySelectorAll('[data-img]').forEach(input=>input.addEventListener('change',()=>{const file=input.files[0];if(!file)return;const url=URL.createObjectURL(file);if(input.dataset.img==='header'){const hero=form.querySelector('[data-preview="hero"]');hero.style.backgroundImage=`linear-gradient(90deg,rgba(124,58,237,.78),rgba(249,115,22,.72)),url(${url})`;}else{const image=form.querySelector('[data-preview="featureImage"]');image.style.backgroundImage=`url(${url})`;image.classList.add('has-image');}input.closest('.newsletter-upload').querySelector('b').textContent=file.name;}));
+        const uploadImage=async input=>{const file=input.files[0];if(!file)return {url:'',publicId:''};if(file.size>8*1024*1024)throw new Error(`${file.name} is larger than 8 MB.`);const fileData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});const response=await MobsieApi.mutate('/api/uploads',{method:'POST',body:JSON.stringify({fileData,originalName:file.name,purpose:'newsletters'})});return {url:response.data.url,publicId:response.data.publicId};};
+        const save=async status=>{
+          const subject=value('subject'),heroTitle=value('heroTitle'),intro=value('intro');if(!subject||!heroTitle||!intro){UI.toast('Subject, hero heading and intro copy are required','alert');return;}
+          const button=root.querySelector(status==='DRAFT'?'[data-d]':'[data-s]');button.disabled=true;button.textContent=status==='DRAFT'?'Saving…':'Sending…';
+          try{const audience=value('audience');const [headerImage,featureImage]=await Promise.all([uploadImage(form.querySelector('[data-img="header"]')),uploadImage(form.querySelector('[data-img="feature"]'))]);const content={heroTitle,intro,featureTitle:value('featureTitle'),featureCopy:value('featureCopy'),ctaText:value('ctaText'),ctaLink:value('ctaLink'),headerImageUrl:headerImage.url,headerImagePublicId:headerImage.publicId,featureImageUrl:featureImage.url,featureImagePublicId:featureImage.publicId,footer:value('footer')};const response=await MobsieApi.mutate('/api/newsletters',{method:'POST',body:JSON.stringify({title:subject,body:[intro,content.featureCopy].filter(Boolean).join('\n\n'),audience,status,content})});const saved=response.data?.[0]||{};DB.newsletters.unshift({id:saved.id,title:subject,subject,body:saved.body,audience,sent:status==='SENT'?'Just now':'—',publishedAt:saved.publishedAt,recipients:0,openRate:0,status:status==='SENT'?'Sent':'Draft',content});close();UI.toast(status==='SENT'?'Newsletter sent to '+audience:'Newsletter draft saved');App.refresh();}catch(error){button.disabled=false;button.textContent=status==='DRAFT'?'Save draft':'Send newsletter →';UI.toast(error.message||'Could not save newsletter','alert');}
+        };
+        root.querySelector('[data-d]').addEventListener('click',()=>save('DRAFT'));root.querySelector('[data-s]').addEventListener('click',()=>save('SENT'));sync();
+      }
+    });
+  }
+
   /* ---------- Newsletters ---------- */
   Pages.newsletters={
     render(){
@@ -1373,13 +1414,13 @@ Pages.messages = {
       const avgOpen=sent.length?Math.round(sent.reduce((sum,n)=>sum+Number(n.openRate||0),0)/sent.length):0;
       const tbl=UI.table({
         pageSize:8, rows:DB.newsletters,
-        onRow:n=>UI.drawer({
+        onRow:n=>{const content=n.content||{};return UI.drawer({
           title:n.title,
           body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.status(n.status)} ${UI.badge(n.audience||'All campuses','purple')}</div>
             ${UI.dl([['Published',esc(n.sent||'—')],['Recipients',n.recipients?F(n.recipients):'Not tracked'],['Open rate',n.openRate?`${n.openRate}%`:'Not tracked']])}
-            <div class="divider"></div><h4 style="margin:0 0 8px">Newsletter message</h4><div style="white-space:pre-wrap;line-height:1.65;color:var(--ink-700)">${esc(n.body||n.message||'No message content is available.')}</div>`,
+            <div class="divider"></div>${Object.keys(content).length?`<div class="newsletter-saved-preview"><div class="newsletter-saved-hero" ${content.headerImageUrl?`style="background-image:linear-gradient(90deg,rgba(124,58,237,.72),rgba(249,115,22,.68)),url('${esc(content.headerImageUrl)}')"`:''}><b>${esc(content.heroTitle||n.title)}</b></div><div class="newsletter-saved-body"><span>Mobsie weekly</span><h3>${esc(content.featureTitle||n.title)}</h3><p>${esc(content.intro||n.body||'')}</p>${content.featureImageUrl?`<img src="${esc(content.featureImageUrl)}" alt="">`:''}<p>${esc(content.featureCopy||'')}</p>${content.ctaText?`<a href="${esc(content.ctaLink||'#')}" target="_blank" rel="noopener">${esc(content.ctaText)}</a>`:''}</div></div>`:`<h4 style="margin:0 0 8px">Newsletter message</h4><div style="white-space:pre-wrap;line-height:1.65;color:var(--ink-700)">${esc(n.body||n.message||'No message content is available.')}</div>`}`,
           foot:n.url?`<a class="btn btn-primary" href="${esc(n.url)}" target="_blank" rel="noopener">${MCIcon('eye')} Open attachment</a>`:''
-        }),
+        })},
         columns:[
           {key:'title',label:'Newsletter',render:r=>`<div class="cell-main">${esc(r.title)}</div><div class="cell-sub">${esc(r.audience)}</div>`},
           {key:'sent',label:'Sent'},
@@ -1402,12 +1443,7 @@ Pages.messages = {
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
     },
     mount(root){
-      root.querySelector('#newNl').addEventListener('click',()=>composeModal('Newsletter',async v=>{
-        const response=await MobsieApi.mutate('/api/newsletters',{method:'POST',body:JSON.stringify({title:v.subject,body:v.body||v.subject,audience:v.aud})});
-        const saved=response.data?.[0]||{};
-        DB.newsletters.unshift({id:saved.id||'newsletter-'+Date.now(),title:v.subject,subject:v.subject,body:v.body||'',message:v.body||'',audience:v.aud,sent:'Just now',publishedAt:saved.publishedAt||new Date().toISOString(),recipients:audSize(v.aud),openRate:0,status:'Sent'});
-        DB.save();
-      }));
+      root.querySelector('#newNl').addEventListener('click',newsletterStudio);
     }
   };
 
