@@ -10,14 +10,17 @@ function encode(value: string) {
 }
 
 export function payFastConfig() {
-  const merchantId = process.env.PAYFAST_MERCHANT_ID;
-  const merchantKey = process.env.PAYFAST_MERCHANT_KEY;
-  const passphrase = process.env.PAYFAST_PASSPHRASE;
-  const appUrl = process.env.PUBLIC_APP_URL?.replace(/\/$/, "");
+  const merchantId = process.env.PAYFAST_MERCHANT_ID?.trim();
+  const merchantKey = process.env.PAYFAST_MERCHANT_KEY?.trim();
+  const passphrase = process.env.PAYFAST_PASSPHRASE?.trim();
+  const appUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/$/, "");
   if (!merchantId || !merchantKey || !passphrase || !appUrl) {
     throw new AppError(503, "PAYFAST_NOT_CONFIGURED", "PayFast is not configured on the server.");
   }
-  const sandbox = process.env.PAYFAST_SANDBOX !== "false";
+  const configuredMode = process.env.PAYFAST_SANDBOX?.trim().toLowerCase();
+  const sandbox = configuredMode
+    ? ["1", "true", "yes", "on"].includes(configuredMode)
+    : process.env.NODE_ENV !== "production";
   return {
     merchantId, merchantKey, passphrase, appUrl, sandbox,
     processUrl: sandbox ? "https://sandbox.payfast.co.za/eng/process" : "https://www.payfast.co.za/eng/process",

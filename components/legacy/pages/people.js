@@ -8,30 +8,23 @@ window.Pages=window.Pages||{};
     const profile=l.onboardingProfile||{};
     UI.drawer({
       title:'Learner Profile',
-      body:`
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">${UI.avatar(l.name,'xl')}
-          <div><div style="font-size:17px;font-weight:800;color:var(--ink-900)">${esc(l.name)}</div>
-          <div class="muted small">${esc(l.grade)} ${esc(l.cls)} · ${esc(l.school)}</div></div>
-          <span style="margin-left:auto">${UI.status(l.status)}</span></div>
-        <div class="grid cards-3" style="gap:10px;margin-bottom:18px">
+      body:`<div class="learner-profile">
+        <div class="learner-profile__hero">${UI.avatar(l.name,'xl')}
+          <div class="learner-profile__identity"><h3>${esc(l.name)}</h3><p>${esc(l.grade)} ${esc(l.cls)} · ${esc(l.branch||l.school)}</p></div>
+          <span class="learner-profile__status">${UI.status(l.status)}</span></div>
+        <div class="learner-profile__stats">
           <div class="mini-stat"><span class="ms-ic t-green">${MCIcon('attendance')}</span><div><div class="ms-val">${l.attendance}%</div><div class="ms-lbl">Attendance</div></div></div>
-          <div class="mini-stat"><span class="ms-ic t-purple">${MCIcon('homework')}</span><div><div class="ms-val">92%</div><div class="ms-lbl">Learning done</div></div></div>
+          <div class="mini-stat"><span class="ms-ic t-purple">${MCIcon('school')}</span><div><div class="ms-val">${esc(l.grade)}</div><div class="ms-lbl">Stage / grade</div></div></div>
           <div class="mini-stat"><span class="ms-ic ${l.fees==='Paid'?'t-green':'t-red'}">${MCIcon('payments')}</span><div><div class="ms-val">${l.fees}</div><div class="ms-lbl">Fees status</div></div></div>
         </div>
-        ${UI.dl([['Age',l.age+' years'],['Parent',esc(l.parent)],['School',esc(l.school)],['Branch',esc(l.branch)],['Class',esc(l.grade)+' '+esc(l.cls)]])}
-        ${Object.keys(profile).length?`<div class="divider"></div><h4 style="margin-bottom:10px">Onboarding information</h4>${UI.dl([
+        <section class="learner-profile__section"><h4>School placement</h4>${UI.dl([['Age',l.age+' years'],['Parent / guardian',esc(l.parent)],['School',esc(l.school)],['Campus',esc(l.branch)],['Class',esc(l.grade)+' '+esc(l.cls)]])}</section>
+        ${Object.keys(profile).length?`<section class="learner-profile__section"><h4>Onboarding information</h4>${UI.dl([
           ['Date of birth',esc(l.dateOfBirth||'—')],['Gender',esc(profile.childGender||'—')],['Guardian email',esc(profile.parentEmail||'—')],['Guardian phone',esc(profile.parentPhone||'—')],
           ['Relationship',esc(profile.relationship||'—')],['Preferred start',esc(profile.preferredStartDate||'—')],['Enrollment',esc(String(profile.enrollmentType||'—').replace('_',' '))],
           ['Aftercare',profile.aftercareRequested?'Requested':'No'],['Disability disclosed',profile.childHasDisability?'Yes':'No'],['Disability details',esc(profile.disabilityDetails||'—')],
           ['Allergies / medical',esc(profile.allergies||'None disclosed')],['Emergency contact',esc(`${profile.emergencyContactName||'—'} · ${profile.emergencyContactPhone||'—'}`)]
-        ])}`:''}
-        <div class="divider"></div>
-        <h4 style="margin-bottom:10px">Recent activity</h4>
-        <div class="feed">
-          <div class="feed-item"><span class="f-ic t-green">${MCIcon('check')}</span><div class="f-txt"><div class="f-main">Marked present</div><div class="f-sub">Today, 07:42</div></div></div>
-          <div class="feed-item"><span class="f-ic t-blue">${MCIcon('homework')}</span><div class="f-txt"><div class="f-main">Learning activity submitted — Counting to 20</div><div class="f-sub">Yesterday</div></div></div>
-          <div class="feed-item"><span class="f-ic t-amber">${MCIcon('gallery')}</span><div class="f-txt"><div class="f-main">Tagged in 4 photos — Sports Day</div><div class="f-sub">May 16</div></div></div>
-        </div>`,
+        ])}</section>`:''}
+      </div>`,
       foot:`<button class="btn btn-ghost" data-edit>${MCIcon('edit')} Edit</button>
             <button class="btn btn-ghost" data-delete>${MCIcon('delete')} Delete</button>
             <button class="btn btn-primary" data-go="reports">${MCIcon('reports')} View Full Report</button>`,
@@ -129,26 +122,27 @@ window.Pages=window.Pages||{};
       });
       root.querySelector('#lEnrol').addEventListener('click',()=>UI.modal({
         title:'Enrol Learner',
-        body:`<div style="max-height:62vh;overflow:auto;padding-right:6px">
-          <h4 style="margin:0 0 12px">Learner details</h4>
+        body:`<div class="people-edit-form learner-enrol-form">
+          <p class="people-edit-form__intro">Add a learner using the same complete information collected during mobile onboarding.</p>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Learner details</div>
           <div class="form-row"><div class="field"><label>Child's full name</label><input data-f="name" placeholder="Full name"></div><div class="field"><label>Date of birth</label><input type="date" data-f="dateOfBirth"></div></div>
           <div class="form-row"><div class="field"><label>Gender</label><select data-f="childGender"><option value="BOY">Boy</option><option value="GIRL">Girl</option><option value="OTHER">Other</option></select></div><div class="field"><label>Disability to disclose?</label><select data-f="childHasDisability"><option value="false">No</option><option value="true">Yes</option></select></div></div>
-          <div class="field"><label>Disability details</label><textarea data-f="disabilityDetails" placeholder="Optional details and support requirements"></textarea></div>
-          <div class="divider"></div><h4 style="margin:0 0 12px">Placement</h4>
+          <div class="field"><label>Disability details</label><textarea data-f="disabilityDetails" placeholder="Optional details and support requirements"></textarea></div></div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">School placement</div>
           <div class="form-row"><div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Stage / grade</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div></div>
           <div class="form-row"><div class="field"><label>Class</label><input data-f="className" value="A"></div><div class="field"><label>Preferred start date</label><input type="date" data-f="preferredStartDate"></div></div>
           <div class="form-row"><div class="field"><label>Enrollment</label><select data-f="enrollmentType"><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option></select></div><div class="field"><label>Aftercare</label><select data-f="aftercareRequested"><option value="false">Not requested</option><option value="true">Requested</option></select></div></div>
           <div class="form-row"><div class="field"><label>Previous school</label><input data-f="previousSchool"></div><div class="field"><label>Previous school phone</label><input type="tel" data-f="previousSchoolPhone"></div></div>
           <div class="form-row"><div class="field"><label>Attended preschool?</label><select data-f="attendedPreschool"><option value="true">Yes</option><option value="false">No</option></select></div><div class="field"><label>How did they hear about us?</label><select data-f="referralSource"><option value="SOCIAL_MEDIA">Social media</option><option value="WORD_OF_MOUTH">Word of mouth</option><option value="RADIO">Radio</option><option value="OTHER">Other</option></select></div></div>
-          <div class="field"><label>Allergies / medical notes</label><textarea data-f="allergies" placeholder="Enter allergies or leave blank"></textarea></div>
-          <div class="divider"></div><h4 style="margin:0 0 12px">Parent / guardian</h4>
+          <div class="field"><label>Allergies / medical notes</label><textarea data-f="allergies" placeholder="Enter allergies or leave blank"></textarea></div></div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Parent / guardian</div>
           <div class="form-row"><div class="field"><label>Full name</label><input data-f="parentName"></div><div class="field"><label>Relationship</label><select data-f="relationship"><option>Mother</option><option>Father</option><option>Guardian</option><option>Other</option></select></div></div>
-          <div class="form-row"><div class="field"><label>Email</label><input type="email" data-f="parentEmail"></div><div class="field"><label>Mobile number</label><input type="tel" data-f="parentPhone"></div></div>
-          <div class="divider"></div><h4 style="margin:0 0 12px">Emergency contact and fee payer</h4>
+          <div class="form-row"><div class="field"><label>Email</label><input type="email" data-f="parentEmail"></div><div class="field"><label>Mobile number</label><input type="tel" data-f="parentPhone"></div></div></div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Emergency contact and fee payer</div>
           <div class="form-row"><div class="field"><label>Emergency contact</label><input data-f="emergencyContactName"></div><div class="field"><label>Emergency phone</label><input type="tel" data-f="emergencyContactPhone"></div></div>
-          <div class="form-row"><div class="field"><label>Fee payer first name</label><input data-f="feePayerFirstName"></div><div class="field"><label>Fee payer last name</label><input data-f="feePayerLastName"></div></div>
+          <div class="form-row"><div class="field"><label>Fee payer first name</label><input data-f="feePayerFirstName"></div><div class="field"><label>Fee payer last name</label><input data-f="feePayerLastName"></div></div></div>
         </div>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Enrol Learner</button>`,
+        foot:`<div class="people-edit-actions"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Enrol Learner</button></div>`,
         mount(r,close){
           r.querySelector('[data-x]').addEventListener('click',close);
           r.querySelector('[data-s]').addEventListener('click',async()=>{
