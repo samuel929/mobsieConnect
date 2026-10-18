@@ -160,8 +160,7 @@ window.Pages=window.Pages||{};
       Pages.invoices._tid=UI.lastTableId();
       return `
         ${UI.pageHead('Invoices','Automated invoicing for every family, every month.',
-          `<button class="btn btn-ghost" id="invRules">${MCIcon('settings')} Invoice Rules</button>
-           <button class="btn btn-primary" id="invNew">${MCIcon('plus')} New Invoice</button>`)}
+          `<button class="btn btn-primary" id="invNew">${MCIcon('plus')} New Invoice</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
           ${UI.statCard({icon:'invoices',tint:'t-blue',label:'Issued This Month',value:F(issuedThisMonth.length),deltaHtml:`<span class="delta flat">${latestIssue?'last issued '+latestIssue.toLocaleDateString('en-ZA'):'no invoices issued'}</span>`})}
           ${UI.statCard({icon:'check',tint:'t-green',label:'Paid',value:paidRate+'%',deltaHtml:`<span class="delta flat">${F(paid.length)} of ${F(rows.length)} invoices</span>`})}
@@ -176,7 +175,6 @@ window.Pages=window.Pages||{};
     },
     mount(root){
       root.querySelector('#invQ').addEventListener('input',e=>UI.tableFilter(Pages.invoices._tid,e.target.value));
-      root.querySelector('#invRules').addEventListener('click',()=>App.go('settings'));
       root.querySelector('#invNew').addEventListener('click',()=>UI.modal({
         title:'New Invoice',
         body:`<div class="field"><label>Bill to</label><select data-f="parent">${DB.parents.slice(0,20).map(p=>`<option>${esc(p.name)}</option>`).join('')}</select></div>

@@ -23,8 +23,7 @@ window.Pages=window.Pages||{};
       const rows=b?DB.albums.filter(a=>a.branch===b.name):DB.albums;
       return `
         ${UI.pageHead('Gallery','Class and event photo albums — parents only ever see their own child\'s classes.',
-          `<button class="btn btn-ghost" id="apprRules">${MCIcon('settings')} Approval Rules</button>
-           <button class="btn btn-primary" id="upAlbum">${MCIcon('upload')} Upload Album</button>`)}
+          `<button class="btn btn-primary" id="upAlbum">${MCIcon('upload')} Upload Album</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
           ${UI.statCard({icon:'gallery',tint:'t-orange',label:'Photos This Month',value:F(DB.albums.reduce((a,x)=>a+x.count,0)+806),deltaHtml:UI.delta(18,'up','vs April')})}
           ${UI.statCard({icon:'media',tint:'t-purple',label:'Albums',value:F(DB.albums.length+40),deltaHtml:`<span class="delta flat">across 5 campuses</span>`})}
@@ -69,7 +68,6 @@ window.Pages=window.Pages||{};
           }
         });
       }));
-      root.querySelector('#apprRules').addEventListener('click',()=>App.go('settings'));
       root.querySelector('#upAlbum').addEventListener('click',()=>UI.modal({
         title:'Upload Album',
         body:`<div class="field"><label>Album name</label><input type="text" data-f="name" placeholder="e.g. Heritage Day 2026"></div>

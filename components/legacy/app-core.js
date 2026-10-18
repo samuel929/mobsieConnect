@@ -42,8 +42,7 @@
       {route:'users',label:'Users',icon:'users'},
       {route:'roles',label:'Roles & Permissions',icon:'roles'}]},
     {section:'System',items:[
-      {route:'audit',label:'Audit Logs',icon:'audit'},
-      {route:'settings',label:'Settings',icon:'settings'}]},
+      {route:'audit',label:'Audit Logs',icon:'audit'}]},
   ];
   const ROUTE_PERMISSION={dashboard:'View dashboard',schools:'Manage school profile',branches:'Manage campuses',
     learners:'Manage learners',parents:'Manage learners',teachers:'Manage teachers','daily-activity':'Manage teachers',
@@ -51,7 +50,7 @@
     reports:'Reports & analytics',calendar:'Communications',payments:'Finance',invoices:'Finance',statements:'Finance',
     messages:'Communications',newsletters:'Communications',push:'Communications',feedback:'Communications',
     gallery:'Media & gallery',products:'Finance',orders:'Finance',inventory:'Finance',documents:'Manage school profile',
-    users:'User management',roles:'User management',audit:'Platform settings',settings:'Platform settings'};
+    users:'User management',roles:'User management',audit:'Platform settings'};
   function can(permission){
     const saved=window.DB?.currentPermissions;
     if(Array.isArray(saved))return saved.includes(permission);

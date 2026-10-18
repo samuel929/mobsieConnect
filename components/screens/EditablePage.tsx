@@ -28,8 +28,7 @@ export type ControlCentreRoute =
   | 'documents'
   | 'users'
   | 'roles'
-  | 'audit'
-  | 'settings';
+  | 'audit';
 
 type EditablePageProps = {
   route: ControlCentreRoute;
