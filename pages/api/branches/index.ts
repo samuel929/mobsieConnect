@@ -84,10 +84,10 @@ export default apiHandler<unknown>(
         .replace(/[\s_-]+/g, "-");
       const result = await query<BranchRow>(
         `INSERT INTO branches (
-          tenant_id, name, slug, city, region, address, phone, email, image_url,
+          tenant_id, name, slug, school_grade, city, region, address, phone, email, image_url,
           principal_name, principal_email, principal_phone, status, image_public_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-        RETURNING id, name, slug, city, region, address, phone, email::text,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        RETURNING id, name, slug, school_grade AS "schoolGrade", city, region, address, phone, email::text,
           image_url AS "imageUrl", principal_name AS "principalName", principal_email::text AS "principalEmail",
           principal_phone AS "principalPhone", learner_count AS "learnerCount",
           teacher_count AS "teacherCount", attendance_rate::float AS "attendanceRate",
@@ -96,6 +96,7 @@ export default apiHandler<unknown>(
           tenantId,
           input.name,
           slug,
+          input.schoolGrade,
           input.city,
           input.region,
           input.address,
@@ -120,13 +121,13 @@ export default apiHandler<unknown>(
         : null;
       const result = await query<BranchRow>(
         `UPDATE branches SET
-          name=COALESCE($3,name), city=COALESCE($4,city), region=COALESCE($5,region),
-          address=COALESCE($6,address), phone=COALESCE($7,phone), email=COALESCE($8,email),
-          principal_name=COALESCE($9,principal_name), principal_email=COALESCE($10,principal_email),
-          principal_phone=COALESCE($11,principal_phone), status=COALESCE($12,status),
-          image_url=COALESCE($13,image_url), image_public_id=COALESCE($14,image_public_id), updated_at=now()
+          name=COALESCE($3,name), school_grade=COALESCE($4,school_grade), city=COALESCE($5,city), region=COALESCE($6,region),
+          address=COALESCE($7,address), phone=COALESCE($8,phone), email=COALESCE($9,email),
+          principal_name=COALESCE($10,principal_name), principal_email=COALESCE($11,principal_email),
+          principal_phone=COALESCE($12,principal_phone), status=COALESCE($13,status),
+          image_url=COALESCE($14,image_url), image_public_id=COALESCE($15,image_public_id), updated_at=now()
          WHERE id=$1 AND tenant_id=$2
-         RETURNING id, name, slug, city, region, address, phone, email::text,
+         RETURNING id, name, slug, school_grade AS "schoolGrade", city, region, address, phone, email::text,
           image_url AS "imageUrl", principal_name AS "principalName", principal_email::text AS "principalEmail",
           principal_phone AS "principalPhone", learner_count AS "learnerCount",
           teacher_count AS "teacherCount", attendance_rate::float AS "attendanceRate",
@@ -135,6 +136,7 @@ export default apiHandler<unknown>(
           input.id,
           tenantId,
           input.name ?? null,
+          input.schoolGrade ?? null,
           input.city ?? null,
           input.region ?? null,
           input.address ?? null,
@@ -176,7 +178,7 @@ export default apiHandler<unknown>(
     values.push(search ? `%${search}%` : "");
     const searchIndex = values.length;
     const result = await query<BranchRow>(
-      `SELECT b.id, b.name, b.slug, b.city, b.region, b.address, b.phone,
+      `SELECT b.id, b.name, b.slug, b.school_grade AS "schoolGrade", b.city, b.region, b.address, b.phone,
         b.email::text, b.image_url AS "imageUrl", b.principal_name AS "principalName", b.principal_email::text AS "principalEmail",
         b.principal_phone AS "principalPhone", b.learner_count AS "learnerCount",
         b.teacher_count AS "teacherCount", b.attendance_rate::float AS "attendanceRate",

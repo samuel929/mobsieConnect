@@ -390,6 +390,37 @@ table.mc thead th.num{text-align:right}
 .feed-item .f-main b{color:var(--ink-900);font-weight:650}
 .feed-item .f-sub{font-size:12px;color:var(--ink-400);margin-top:2px}
 
+/* Application document review rows keep status and actions clear of filenames. */
+.application-document-row{
+  display:grid;grid-template-columns:48px minmax(150px,1fr) max-content max-content;
+  align-items:center;gap:14px;padding:14px;border:1px solid var(--ink-100);border-radius:12px;
+}
+.application-document-copy{min-width:0}
+.application-document-copy .f-main{font-size:13.5px;color:var(--ink-700);font-weight:600}
+.application-document-copy .f-sub{font-size:12px;color:var(--ink-400);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.application-document-status{display:flex;align-items:center;justify-content:flex-start;min-width:108px}
+.application-document-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.application-document-upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.application-document-upload{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px dashed var(--ink-200);border-radius:10px;background:#fff;cursor:pointer}
+.application-document-upload:hover,.application-document-upload.has-file{border-color:var(--green-400);background:var(--green-50)}
+.application-document-upload span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.application-document-upload strong{font-size:12.5px;color:var(--ink-800)}
+.application-document-upload small{font-size:11px;color:var(--ink-400)}
+.application-document-upload input{width:170px;max-width:45%;font-size:11px}
+.application-consents{display:grid;gap:9px}
+.application-consent{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;line-height:1.45;color:var(--ink-700)}
+.application-consent input{margin-top:2px;accent-color:var(--green-600)}
+@media(max-width:1050px){
+  .application-document-row{grid-template-columns:48px minmax(0,1fr) max-content}
+  .application-document-actions{grid-column:1/-1;justify-content:flex-start;padding-left:62px}
+}
+@media(max-width:700px){
+  .application-document-row{grid-template-columns:40px minmax(0,1fr)}
+  .application-document-status{grid-column:2}
+  .application-document-actions{grid-column:1/-1;padding-left:0}
+  .application-document-upload-grid{grid-template-columns:1fr}
+}
+
 .rank-list{display:flex;flex-direction:column}
 .rank-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-soft)}
 .rank-item:last-child{border-bottom:0}
@@ -777,6 +808,13 @@ table.mc thead th.num{text-align:right}
   background:linear-gradient(transparent,rgba(15,23,42,.72));color:#fff}
 .g-item .g-cap .g-nm{font-weight:700;font-size:13px}
 .g-item .g-cap .g-sub{font-size:11px;opacity:.85}
+.g-actions{position:absolute;z-index:2;top:10px;right:10px;display:flex;gap:5px;opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease}
+.g-item:hover .g-actions,.g-item:focus-within .g-actions{opacity:1;transform:translateY(0)}
+.g-action{min-height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.38);border-radius:9px;background:rgba(15,23,42,.82);backdrop-filter:blur(6px);color:#fff;display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;box-shadow:0 4px 12px rgba(15,23,42,.2)}
+.g-action:hover{background:var(--ink-900)}
+.g-action.danger:hover{background:var(--red-600)}
+.g-action svg{width:13px;height:13px}
+@media (hover:none){.g-actions{opacity:1;transform:none}.g-action span{display:none}.g-action{width:32px;padding:0;justify-content:center}}
 
 /* ---------- Permission matrix ---------- */
 .perm-table{min-width:760px}

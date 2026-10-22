@@ -52,6 +52,7 @@ export const adminParentSchema = parentProfileSchema.extend({
 
 export const branchSchema = z.object({
   name: z.string().trim().min(2).max(100),
+  schoolGrade: z.enum(["Grade A", "Grade B"]),
   city: z.string().trim().min(2).max(80),
   region: z.string().trim().min(2).max(80),
   address: z.string().trim().min(10).max(300),

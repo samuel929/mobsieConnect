@@ -2,6 +2,20 @@
 window.Pages=window.Pages||{};
 (function(){
   const esc=UI.esc, F=DB.fmtN;
+  const schoolGradeOf=branchName=>{const value=String(branchName||'').trim();return !value||value==='—'?'—':/soshanguve/i.test(value)?'Grade A':'Grade B';};
+  const applicationDocumentFields=[
+    ['LEARNER_PHOTO','Recent clear learner photo',true],
+    ['BIRTH_CERTIFICATE','Child’s birth certificate',true],
+    ['PARENT_ID','ID copies (both parents)',true],
+    ['CLINIC_CARD','Child’s full clinic card',true],
+    ['PROOF_OF_ADDRESS','Proof of residence',true],
+    ['PROOF_OF_INCOME','Proof of income / employment confirmation',true],
+    ['FEE_PAYER_ID','Fee payer ID copy',true],
+    ['MEDICAL_AID','Medical aid copy',false],
+  ];
+  const stageOptions=[['STAGE_1','Stage 1 · Baby class'],['STAGE_2','Stage 2 · Toddler class'],['STAGE_3','Stage 3'],['STAGE_4','Stage 4 · Grade 0'],['GRADE_R','Grade R']];
+  const stageForDateOfBirth=value=>{const birth=new Date(`${value}T00:00:00Z`);if(Number.isNaN(birth.getTime()))return'';const today=new Date();let months=(today.getUTCFullYear()-birth.getUTCFullYear())*12+today.getUTCMonth()-birth.getUTCMonth();if(today.getUTCDate()<birth.getUTCDate())months--;return months<6||months>=84?'':months<24?'STAGE_1':months<36?'STAGE_2':months<48?'STAGE_3':months<60?'STAGE_4':'GRADE_R';};
+  const readApplicationFile=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error(`Could not read ${file.name}.`));reader.readAsDataURL(file);});
 
   /* ---------- Applications ---------- */
   // Move an application through the pipeline, keeping donut + badges consistent
@@ -162,6 +176,10 @@ window.Pages=window.Pages||{};
               preferences.branchName ||
                 "—"
             ),
+          ],
+          [
+            "School grade",
+            esc(schoolGradeOf(preferences.branchName || a.branch)),
           ],
           [
             "Reason for branch",
@@ -337,15 +355,22 @@ window.Pages=window.Pages||{};
                     )
                   : "";
 
+              const documentEndpoint = document.id
+                ? `/api/applications/${encodeURIComponent(applicationIdentifier)}/documents/${encodeURIComponent(document.id)}`
+                : "";
+
+              const cleanOriginalName = String(originalName || `document-${index + 1}`)
+                .split(/[\\/]/)
+                .pop()
+                .replace(/[^A-Za-z0-9._ -]/g, "-") || `document-${index + 1}`;
+
+              const downloadableName = isPdf
+                ? `${cleanOriginalName.replace(/\.[^.]+$/, "") || `document-${index + 1}`}.pdf`
+                : cleanOriginalName;
+
               return `
                 <div
-                  class="feed-item"
-                  style="
-                    border:1px solid var(--ink-100);
-                    border-radius:12px;
-                    padding:12px;
-                    align-items:center;
-                  "
+                  class="application-document-row"
                 >
                   ${
                     isImage && fileUrl
@@ -390,11 +415,7 @@ window.Pages=window.Pages||{};
                   }
 
                   <div
-                    class="f-txt"
-                    style="
-                      min-width:0;
-                      flex:1;
-                    "
+                    class="application-document-copy"
                   >
                     <div class="f-main">
                       ${esc(
@@ -424,43 +445,48 @@ window.Pages=window.Pages||{};
                     </div>
                   </div>
 
-                  ${UI.badge(
-                    reviewStatus === "APPROVED" ? "Approved" : reviewStatus === "REJECTED" ? "Rejected" : "Pending review",
-                    reviewStatus === "APPROVED" ? "green" : reviewStatus === "REJECTED" ? "red" : "amber"
-                  )}
+                  <div class="application-document-status">
+                    ${UI.badge(
+                      reviewStatus === "APPROVED" ? "Approved" : reviewStatus === "REJECTED" ? "Rejected" : "Pending review",
+                      reviewStatus === "APPROVED" ? "green" : reviewStatus === "REJECTED" ? "red" : "amber"
+                    )}
+                  </div>
 
-                  ${
-                    fileUrl
-                      ? `
+                  <div class="application-document-actions">
+                    ${
+                      fileUrl && documentEndpoint
+                        ? `
                         <a
                           class="btn btn-ghost btn-sm"
-                          href="${esc(
-                            fileUrl
-                          )}"
+                          href="${esc(documentEndpoint)}?disposition=inline"
                           target="_blank"
                           rel="noopener noreferrer"
-                          style="
-                            margin-left:auto;
-                            flex:none;
-                          "
                         >
                           ${MCIcon(
                             "eye"
                           )}
                           View
                         </a>
+                        <a
+                          class="btn btn-ghost btn-sm"
+                          href="${esc(documentEndpoint)}?disposition=attachment"
+                          download="${esc(downloadableName)}"
+                        >
+                          ${MCIcon("download")}
+                          Download
+                        </a>
                       `
-                      : `
+                        : `
                         <span
                           class="small muted"
-                          style="margin-left:auto"
                         >
                           File unavailable
                         </span>
                       `
-                  }
-                  <button class="btn btn-ghost btn-sm" data-doc-review="APPROVED" data-doc-id="${esc(document.id || "")}">${MCIcon("check")} Approve</button>
-                  <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject</button>
+                    }
+                    <button class="btn btn-ghost btn-sm" data-doc-review="APPROVED" data-doc-id="${esc(document.id || "")}">${MCIcon("check")} Approve</button>
+                    <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject</button>
+                  </div>
                 </div>
               `;
             })
@@ -653,6 +679,11 @@ window.Pages=window.Pages||{};
               a.branch ||
               "—"
           ),
+        ],
+
+        [
+          "School grade",
+          esc(schoolGradeOf(preferences?.branchName || a.branch)),
         ],
 
         [
@@ -1013,7 +1044,7 @@ function formatDocumentSize(bytes) {
         {key:'id',label:'ID',render:r=>`<span class="cell-main" style="font-variant-numeric:tabular-nums">${r.id}</span>`},
         {key:'child',label:'Child',render:r=>UI.personCell(r.child,r.grade)},
         {key:'parent',label:'Parent',render:r=>`<div>${esc(r.parent)}</div><div class="cell-sub">${esc(r.phone)}</div>`},
-        {key:'school',label:'School',render:r=>`<div>${esc(r.school)}</div><div class="cell-sub">${esc(r.branch)}</div>`},
+        {key:'school',label:'School',render:r=>`<div>${esc(r.school)}</div><div class="cell-sub">${esc(r.branch)} · ${esc(r.schoolGrade||schoolGradeOf(r.branch))}</div>`},
         {key:'date',label:'Submitted'},
         {key:'docs',label:'Docs',num:true,render:r=>`${r.docs}/10`},
         {key:'consentSignedCount',label:'Consent',render:r=>UI.badge(
@@ -1076,103 +1107,94 @@ function formatDocumentSize(bytes) {
       const na=root.querySelector('#newApp');
       if(na) na.addEventListener('click',()=>UI.modal({
         title:'New Application',
-        body:`<div class="form-row">
-            <div class="field"><label>Child's name</label><input type="text" data-f="child" placeholder="Full name"></div>
-            <div class="field"><label>Grade applying for</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+        body:`<div class="people-edit-form learner-enrol-form dashboard-application-form">
+          <p class="people-edit-form__intro">Capture the same complete application collected by the mobile onboarding flow.</p>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Application and parent / guardian</div>
+            <div class="form-row"><div class="field"><label>Application type</label><select data-f="applicationType"><option value="NEW">New application</option><option value="REREGISTRATION">Re-registration</option></select></div><div class="field"><label>Relationship</label><select data-f="relationship"><option>Mother</option><option>Father</option><option>Guardian</option><option>Other</option></select></div></div>
+            <div class="field"><label>Parent / guardian full name</label><input data-f="parentName" placeholder="Full name"></div>
+            <div class="form-row"><div class="field"><label>Parent email</label><input type="email" data-f="parentEmail" placeholder="parent@email.com"></div><div class="field"><label>Parent phone</label><input type="tel" data-f="parentPhone" placeholder="082 555 0182"></div></div>
           </div>
-          <div class="field"><label>Parent / guardian</label><input type="text" data-f="parent" placeholder="Full name"></div>
-          <div class="form-row">
-            <div class="field"><label>Parent email</label><input type="email" data-f="email" placeholder="parent@email.com"></div>
-            <div class="field"><label>Parent phone</label><input type="tel" data-f="phone" placeholder="082 555 0182"></div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Child details</div>
+            <div class="field"><label>Child’s full name</label><input data-f="childName" placeholder="Full name"></div>
+            <div class="form-row"><div class="field"><label>South African ID number</label><input inputmode="numeric" maxlength="13" data-f="childIdNumber" placeholder="13-digit ID number"></div><div class="field"><label>Date of birth</label><input type="date" data-f="childDateOfBirth"></div></div>
+            <div class="form-row"><div class="field"><label>Gender</label><select data-f="childGender"><option value="BOY">Boy</option><option value="GIRL">Girl</option><option value="OTHER">Other</option></select></div><div class="field"><label>Current stage</label><select data-f="currentGrade">${stageOptions.map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select><small class="muted">Automatically matched to the verified date of birth.</small></div></div>
+            <div class="form-row"><div class="field"><label>Support needs?</label><select data-f="childHasDisability"><option value="false">No</option><option value="true">Yes</option></select></div><div class="field"><label>Support details</label><textarea data-f="disabilityDetails" placeholder="Describe learning or physical support needs"></textarea></div></div>
           </div>
-          <div class="form-row">
-            <div class="field"><label>Relationship</label><select data-f="relationship"><option>Mother</option><option>Father</option><option>Guardian</option><option>Other</option></select></div>
-            <div class="field"><label>Child date of birth</label><input type="date" data-f="dateOfBirth"></div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">School preferences</div>
+            <div class="form-row"><div class="field"><label>Preferred branch</label><select data-f="branchId"><option value="">Select a branch</option>${DB.liveBranches().map(b=>`<option value="${esc(b.id)}">${esc(b.name)} — ${esc(b.schoolGrade||schoolGradeOf(b.name))}</option>`).join('')}</select></div><div class="field"><label>Why this branch?</label><select data-f="reason"><option value="">Select a reason</option><option value="CLOSE_TO_HOME">Close to home</option><option value="CLOSE_TO_WORK">Close to work</option><option value="CONVENIENT">Convenient location</option><option value="AFFORDABLE">Affordable fees</option><option value="RECOMMENDED">Recommended</option><option value="REPUTATION">School reputation and programme</option><option value="OTHER">Other</option></select></div></div>
+            <div class="form-row"><div class="field"><label>Type of school</label><select data-f="schoolType"><option value="PRIVATE_PRESCHOOL">Private Preschool</option><option value="CHILD_DAY_CARE">Child Day Care</option><option value="NPO_PRESCHOOL">NPO Preschool</option></select></div><div class="field"><label>School stage</label><select data-f="schoolStage">${stageOptions.map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select></div></div>
+            <div class="form-row"><div class="field"><label>Preferred start date</label><input type="date" data-f="preferredStartDate"></div><div class="field"><label>Attendance option</label><select data-f="enrollmentType"><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option></select></div></div>
+            <div class="form-row"><div class="field"><label>Aftercare</label><select data-f="aftercareRequested"><option value="false">No aftercare</option><option value="true">Include aftercare</option></select></div><div class="field"><label>Attended preschool?</label><select data-f="attendedPreschool"><option value="false">No</option><option value="true">Yes</option></select></div></div>
+            <div class="form-row"><div class="field"><label>Previous school name</label><input data-f="previousSchool"></div><div class="field"><label>Previous school phone</label><input type="tel" data-f="previousSchoolPhone"></div></div>
+            <div class="field"><label>How did they hear about Mobsie?</label><select data-f="referralSource"><option value="">Select a source</option><option value="SOCIAL_MEDIA">Social media</option><option value="WORD_OF_MOUTH">Word of mouth</option><option value="RADIO">Radio</option><option value="STREET_BOARDS">Street boards</option><option value="WEBSITE">Website</option><option value="VEHICLE_BRANDING">Vehicle branding</option><option value="OTHER">Other</option></select></div>
           </div>
-          <div class="field"><label>Child gender</label><select data-f="gender"><option value="BOY">Boy</option><option value="GIRL">Girl</option><option value="OTHER">Other</option></select></div>
-          <div class="form-row">
-            <div class="field"><label>School</label><select data-f="school">${DB.schools.slice(0,15).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>Preferred branch</label><select data-f="branch" required>
-              <option value="">Select a branch</option>
-              ${DB.liveBranches().map(b=>`<option value="${esc(b.name)}">${esc(b.name)} — ${esc(b.city)}</option>`).join('')}
-            </select></div>
-          </div>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Submit Application</button>`,
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Medical, emergency and fee payer</div>
+            <div class="field"><label>Allergies / medical information</label><textarea data-f="allergies" placeholder="Enter details or leave blank"></textarea></div>
+            <div class="form-row"><div class="field"><label>Emergency contact name</label><input data-f="emergencyContactName"></div><div class="field"><label>Emergency contact phone</label><input type="tel" data-f="emergencyContactPhone"></div></div>
+            <div class="form-row"><div class="field"><label>Fee payer first name</label><input data-f="feePayerFirstName"></div><div class="field"><label>Fee payer surname</label><input data-f="feePayerLastName"></div></div>
+            <label class="application-consent"><input type="checkbox" data-consent="feePayerTermsAccepted"> I am responsible for school fees and accept the fee-payer terms.</label>
+          </div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Required documents</div>
+            <p class="small muted">PDF, JPG or PNG · maximum 8 MB per file.</p>
+            <div class="application-document-upload-grid">${applicationDocumentFields.map(([kind,label,required])=>`<label class="application-document-upload"><span><strong>${esc(label)}</strong><small>${required?'Required':'Optional'}</small></span><input type="file" data-application-document="${kind}" accept="application/pdf,image/jpeg,image/png" ${required?'required':''}></label>`).join('')}</div>
+          </div>
+          <div class="people-edit-form__section"><div class="people-edit-form__section-title">Terms and consent</div>
+            <div class="application-consents">
+              <label class="application-consent"><input type="checkbox" data-consent="photoConsent"> I consent to photographs for school activities and parent communications.</label>
+              <label class="application-consent"><input type="checkbox" data-consent="informationAccurate"> I confirm that all information is accurate.</label>
+              <label class="application-consent"><input type="checkbox" data-consent="privacyAccepted"> I accept the privacy policy.</label>
+              <label class="application-consent"><input type="checkbox" data-consent="termsAccepted"> I accept the application terms and conditions.</label>
+              <label class="application-consent"><input type="checkbox" data-consent="enrolmentTermsAccepted"> I accept the enrolment terms and conditions.</label>
+            </div>
+          </div>
+        </div>`,
+        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Create Application</button>`,
         mount(r,close){
+          const dateInput=r.querySelector('[data-f="childDateOfBirth"]');
+          dateInput.addEventListener('change',()=>{const stage=stageForDateOfBirth(dateInput.value);if(stage){r.querySelector('[data-f="currentGrade"]').value=stage;r.querySelector('[data-f="schoolStage"]').value=stage;}});
+          r.querySelectorAll('[data-application-document]').forEach(input=>input.addEventListener('change',()=>input.closest('label').classList.toggle('has-file',Boolean(input.files[0]))));
           r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',async()=>{
+          r.querySelector('[data-s]').addEventListener('click',async(event)=>{
             const v=UI.formVals(r);
-            if(!v.child||!v.parent||!v.email||!v.phone||!v.dateOfBirth||!v.branch){
-              UI.toast('Complete the child, parent and preferred branch details','alert');return;
-            }
-            const s=DB.schools.find(x=>x.id===v.school)||DB.schools[0];
+            const required=['parentName','parentEmail','parentPhone','childName','childIdNumber','childDateOfBirth','currentGrade','branchId','reason','schoolType','schoolStage','preferredStartDate','previousSchool','previousSchoolPhone','referralSource','emergencyContactName','emergencyContactPhone','feePayerFirstName','feePayerLastName'];
+            if(required.some(key=>!v[key])){UI.toast('Complete every required onboarding field','alert');return;}
+            const consentKeys=['feePayerTermsAccepted','photoConsent','informationAccurate','privacyAccepted','termsAccepted','enrolmentTermsAccepted'];
+            const consents=Object.fromEntries(consentKeys.map(key=>[key,Boolean(r.querySelector(`[data-consent="${key}"]`)?.checked)]));
+            if(consentKeys.some(key=>!consents[key])){UI.toast('Accept all fee-payer and application consent statements','alert');return;}
+            const documentInputs=[...r.querySelectorAll('[data-application-document]')];
+            if(documentInputs.some(input=>input.required&&!input.files[0])){UI.toast('Upload every required application document','alert');return;}
+            if(documentInputs.some(input=>input.files[0]?.size>8*1024*1024)){UI.toast('Each document must be smaller than 8 MB','alert');return;}
+            const branch=DB.branches.find(item=>item.id===v.branchId);
+            if(!branch){UI.toast('Select a valid preferred branch','alert');return;}
+            const s=DB.schools[0];
+            const button=event.currentTarget;button.disabled=true;button.textContent='Creating…';
             try{
-              const created=await MobsieApi.mutate('/api/applications?tenantId='+encodeURIComponent(MobsieSession.tenantId),{
-                method:'POST',body:JSON.stringify({
-                  parentName:v.parent,parentEmail:v.email,parentPhone:v.phone,relationship:v.relationship,
-                  childName:v.child,childDateOfBirth:v.dateOfBirth,childGender:v.gender,currentGrade:v.grade
-                })
-              });
-              const application=created.data.application;
-              DB.applications.unshift({
-  /**
-   * Display ID
-   */
-  id:
-    application.reference,
-
-  /**
-   * Real PostgreSQL application UUID
-   *
-   * REQUIRED for loading documents.
-   */
-  databaseId:
-    application.id,
-
-  child:
-    v.child,
-
-  parent:
-    v.parent,
-
-  email:
-    v.email,
-
-  phone:
-    v.phone,
-
-  school:
-    s.name,
-
-  schoolId:
-    s.id,
-
-  branch:
-    v.branch ||
-    s.city + " Branch",
-
-  grade:
-    v.grade,
-
-  status:
-    "Pending Review",
-
-  date:
-    new Date().toLocaleDateString(
-      "en-ZA"
-    ),
-
-  documents:
-    application.documents || [],
-
-  docs:
-    application.documents?.length || 0,
-});
-            DB.appCounts[0]++;DB.counters.pendingReview++;
-            aState.tab='All';
-            DB.log('Captured application',v.child+' — '+s.name,'ok');
-              close();UI.toast('Application saved to Neon');App.refresh();
-            }catch(error){UI.toast(error.message,'alert');}
+              const created=await MobsieApi.mutate('/api/applications?tenantId='+encodeURIComponent(MobsieSession.tenantId),{method:'POST',body:JSON.stringify({
+                applicationType:v.applicationType,parentName:v.parentName,parentEmail:v.parentEmail,parentPhone:v.parentPhone,relationship:v.relationship,
+                childName:v.childName,childIdNumber:v.childIdNumber,childDateOfBirth:v.childDateOfBirth,childGender:v.childGender,currentGrade:v.currentGrade,
+                childHasDisability:v.childHasDisability==='true',disabilityDetails:v.disabilityDetails
+              })});
+              const application=created.data.application,authHeaders={'X-Application-Token':created.data.accessToken};
+              const preferences=await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/preferences`,{method:'PUT',headers:authHeaders,body:JSON.stringify({
+                branchId:v.branchId,reason:v.reason,schoolType:v.schoolType,schoolStage:v.schoolStage,preferredStartDate:v.preferredStartDate,enrollmentType:v.enrollmentType,
+                aftercareRequested:v.aftercareRequested==='true',previousSchool:v.previousSchool,previousSchoolPhone:v.previousSchoolPhone,referralSource:v.referralSource,
+                attendedPreschool:v.attendedPreschool==='true',allergies:v.allergies,emergencyContactName:v.emergencyContactName,emergencyContactPhone:v.emergencyContactPhone,
+                feePayerFirstName:v.feePayerFirstName,feePayerLastName:v.feePayerLastName,feePayerTermsAccepted:true
+              })});
+              const uploadedDocuments=[];
+              for(const input of documentInputs){const file=input.files[0];if(!file)continue;const mimeType=file.type==='image/png'?'image/png':file.type==='image/jpeg'||file.type==='image/jpg'?'image/jpeg':'application/pdf';const uploaded=await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/documents`,{method:'POST',headers:authHeaders,body:JSON.stringify({kind:input.dataset.applicationDocument,originalName:file.name,mimeType,fileData:await readApplicationFile(file)})});uploadedDocuments.push({id:uploaded.data.id,kind:input.dataset.applicationDocument,originalName:file.name,mimeType,reviewStatus:'PENDING'});}
+              await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/status`,{method:'PUT',body:JSON.stringify({status:'PENDING_REVIEW',consents:{informationAccurate:true,privacyAccepted:true,termsAccepted:true,enrolmentTermsAccepted:true,photoConsent:true}})});
+              const reference=preferences.data.reference||application.reference;
+              DB.applications.unshift({id:reference,databaseId:application.id,child:v.childName,parent:v.parentName,email:v.parentEmail,phone:v.parentPhone,school:s.name,schoolId:s.id,
+                branch:branch.name,schoolGrade:branch.schoolGrade||schoolGradeOf(branch.name),grade:v.currentGrade,status:'Pending Review',date:new Date().toLocaleDateString('en-ZA'),
+                documents:uploadedDocuments,docs:uploadedDocuments.length,preferences:{branchId:v.branchId,branchName:branch.name,reason:v.reason,schoolType:v.schoolType,schoolStage:v.schoolStage,
+                  preferredStartDate:v.preferredStartDate,enrollmentType:v.enrollmentType,aftercareRequested:v.aftercareRequested==='true',previousSchool:v.previousSchool,
+                  previousSchoolPhone:v.previousSchoolPhone,referralSource:v.referralSource,attendedPreschool:v.attendedPreschool==='true',allergies:v.allergies,
+                  emergencyContactName:v.emergencyContactName,emergencyContactPhone:v.emergencyContactPhone,feePayerFirstName:v.feePayerFirstName,
+                  feePayerLastName:v.feePayerLastName,feePayerTermsAccepted:true}});
+              DB.appCounts[0]++;DB.counters.pendingReview++;aState.tab='All';DB.log('Captured application',v.childName+' — '+branch.name,'ok');
+              close();UI.toast('Complete application and documents saved to Neon');App.refresh();
+            }catch(error){button.disabled=false;button.textContent='Create Application';UI.toast(error.message,'alert');}
           });
         }
       }));

@@ -24,6 +24,12 @@
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
 
+  const schoolGradeForBranch = (branchName) => {
+    const value = String(branchName || '').trim();
+    if (!value || value === '—') return '—';
+    return /soshanguve/i.test(value) ? 'Grade A' : 'Grade B';
+  };
+
   const PERSISTED_MODELS = [
     'schools', 'branches', 'teachers', 'parents', 'learners', 'applications', 'appCounts',
     'waitingList', 'invoices', 'conversations', 'newsletters', 'pushLog',
@@ -112,6 +118,7 @@
         email: branch.email || '',
         address: branch.address || '',
         imageUrl: branch.imageUrl,
+        schoolGrade: branch.schoolGrade || schoolGradeForBranch(branch.name),
         status: branch.status === 'COMING_SOON' ? 'Coming Soon' : statusLabel(branch.status),
         since: new Date(branch.createdAt).getFullYear().toString(),
       }));
@@ -123,6 +130,7 @@
         school: window.DB.SCHOOL_NAME,
         schoolId: 'sch-1',
         branch: student.branchName,
+        schoolGrade: schoolGradeForBranch(student.branchName),
         grade: student.grade,
         cls: student.className,
         parent: student.parentName,
@@ -258,7 +266,10 @@
         phone: application.parentPhone,
         school: window.DB.SCHOOL_NAME,
         schoolId: 'sch-1',
-        branch: '—',
+        branch: application.branchName || application.preferences?.branchName || '—',
+        preferences: application.preferences || null,
+        schoolType: application.preferences?.schoolType || null,
+        schoolGrade: schoolGradeForBranch(application.branchName || application.preferences?.branchName),
         applicationType: application.applicationType || 'NEW',
         registrationFeeWaived: Boolean(application.registrationFeeWaived),
         childHasDisability: Boolean(application.childHasDisability),

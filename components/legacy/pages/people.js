@@ -2,6 +2,7 @@
 window.Pages=window.Pages||{};
 (function(){
   const esc=UI.esc, F=DB.fmtN, R=DB.fmtR;
+  const schoolGradeOf=branchName=>{const value=String(branchName||'').trim();return !value||value==='—'?'—':/soshanguve/i.test(value)?'Grade A':'Grade B';};
 
   /* ---------- Learners ---------- */
   function openLearner(l){
@@ -17,7 +18,7 @@ window.Pages=window.Pages||{};
           <div class="mini-stat"><span class="ms-ic t-purple">${MCIcon('school')}</span><div><div class="ms-val">${esc(l.grade)}</div><div class="ms-lbl">Stage / grade</div></div></div>
           <div class="mini-stat"><span class="ms-ic ${l.fees==='Paid'?'t-green':'t-red'}">${MCIcon('payments')}</span><div><div class="ms-val">${l.fees}</div><div class="ms-lbl">Fees status</div></div></div>
         </div>
-        <section class="learner-profile__section"><h4>School placement</h4>${UI.dl([['Age',l.age+' years'],['Parent / guardian',esc(l.parent)],['School',esc(l.school)],['Campus',esc(l.branch)],['Class',esc(l.grade)+' '+esc(l.cls)]])}</section>
+        <section class="learner-profile__section"><h4>School placement</h4>${UI.dl([['Age',l.age+' years'],['Parent / guardian',esc(l.parent)],['School',esc(l.school)],['Campus',esc(l.branch)],['School grade',esc(l.schoolGrade||schoolGradeOf(l.branch))],['Class',esc(l.grade)+' '+esc(l.cls)]])}</section>
         ${Object.keys(profile).length?`<section class="learner-profile__section"><h4>Onboarding information</h4>${UI.dl([
           ['Date of birth',esc(l.dateOfBirth||'—')],['Gender',esc(profile.childGender||'—')],['Guardian email',esc(profile.parentEmail||'—')],['Guardian phone',esc(profile.parentPhone||'—')],
           ['Relationship',esc(profile.relationship||'—')],['Preferred start',esc(profile.preferredStartDate||'—')],['Enrollment',esc(String(profile.enrollmentType||'—').replace('_',' '))],
@@ -56,7 +57,7 @@ window.Pages=window.Pages||{};
           const v=UI.formVals(r),branch=DB.branches.find(b=>b.name===v.branch);
           if(!v.name||!branch?.id||!v.grade||!v.parent){UI.toast('Complete the learner details','alert');return;}
           try{await MobsieApi.mutate('/api/students',{method:'PUT',body:JSON.stringify({id:l.id,branchId:branch.id,name:v.name,grade:v.grade,className:v.cls||'A',parentName:v.parent,attendanceRate:Number(l.attendance)||0,enrollmentStatus:'ENROLLED'})});
-            Object.assign(l,{name:v.name,branch:v.branch,grade:v.grade,cls:v.cls||'A',parent:v.parent});DB.recount();DB.save();close();UI.toast('Learner changes saved to Neon.');App.refresh();
+            Object.assign(l,{name:v.name,branch:v.branch,schoolGrade:schoolGradeOf(v.branch),grade:v.grade,cls:v.cls||'A',parent:v.parent});DB.recount();DB.save();close();UI.toast('Learner changes saved to Neon.');App.refresh();
           }catch(error){UI.toast(error.message||'Could not update learner','alert');}
         });
       }});
@@ -87,6 +88,7 @@ window.Pages=window.Pages||{};
         columns:[
           {key:'name',label:'Learner',render:r=>UI.personCell(r.name,r.age+' yrs')},
           {key:'branch',label:'Campus'},
+          {key:'schoolGrade',label:'School grade',render:r=>UI.badge(r.schoolGrade||schoolGradeOf(r.branch),(r.schoolGrade||schoolGradeOf(r.branch))==='Grade A'?'purple':'ink')},
           {key:'grade',label:'Class',render:r=>`${esc(r.grade)} ${esc(r.cls)}`},
           {key:'parent',label:'Parent'},
           {key:'attendance',label:'Attendance',render:r=>`<div style="display:flex;align-items:center;gap:10px;min-width:120px"><span class="meter"><i style="width:${r.attendance}%"></i></span><b style="font-variant-numeric:tabular-nums">${r.attendance}%</b></div>`},
@@ -116,7 +118,7 @@ window.Pages=window.Pages||{};
       root.querySelector('#lQ').addEventListener('input',e=>UI.tableFilter(Pages.learners._tid,e.target.value));
       root.querySelector('#lImport').addEventListener('click',()=>{
         UI.downloadCSV('mobsie-learner-import-template.csv',
-          ['Child name','Age','Campus','Class','Parent / guardian','Parent email','Parent phone'],
+          ['Child name','Age','Campus','School grade','Class','Parent / guardian','Parent email','Parent phone'],
           []);
         UI.toast('Learner import template downloaded');
       });
@@ -129,7 +131,7 @@ window.Pages=window.Pages||{};
           <div class="form-row"><div class="field"><label>Gender</label><select data-f="childGender"><option value="BOY">Boy</option><option value="GIRL">Girl</option><option value="OTHER">Other</option></select></div><div class="field"><label>Disability to disclose?</label><select data-f="childHasDisability"><option value="false">No</option><option value="true">Yes</option></select></div></div>
           <div class="field"><label>Disability details</label><textarea data-f="disabilityDetails" placeholder="Optional details and support requirements"></textarea></div></div>
           <div class="people-edit-form__section"><div class="people-edit-form__section-title">School placement</div>
-          <div class="form-row"><div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Stage / grade</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div></div>
+          <div class="form-row"><div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(b=>`<option value="${esc(b.name)}">${esc(b.name)} — ${esc(b.schoolGrade||schoolGradeOf(b.name))}</option>`).join('')}</select></div><div class="field"><label>Stage / grade</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div></div>
           <div class="form-row"><div class="field"><label>Class</label><input data-f="className" value="A"></div><div class="field"><label>Preferred start date</label><input type="date" data-f="preferredStartDate"></div></div>
           <div class="form-row"><div class="field"><label>Enrollment</label><select data-f="enrollmentType"><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option></select></div><div class="field"><label>Aftercare</label><select data-f="aftercareRequested"><option value="false">Not requested</option><option value="true">Requested</option></select></div></div>
           <div class="form-row"><div class="field"><label>Previous school</label><input data-f="previousSchool"></div><div class="field"><label>Previous school phone</label><input type="tel" data-f="previousSchoolPhone"></div></div>
@@ -166,7 +168,7 @@ window.Pages=window.Pages||{};
               })});
               const learner=created.data?.[0];
               DB.learners.unshift({id:learner?.id||'l-'+Date.now(),name:v.name,school:DB.SCHOOL_NAME,schoolId:'sch-1',
-                branch:v.branch,grade:v.grade,cls:v.className||'A',parent:v.parentName,dateOfBirth:v.dateOfBirth,age,attendance:0,fees:'Not available',status:'Enrolled',onboardingProfile:learner?.onboardingProfile||{}});
+                branch:v.branch,schoolGrade:schoolGradeOf(v.branch),grade:v.grade,cls:v.className||'A',parent:v.parentName,dateOfBirth:v.dateOfBirth,age,attendance:0,fees:'Not available',status:'Enrolled',onboardingProfile:learner?.onboardingProfile||{}});
               branch.students=(branch.students||0)+1;
               DB.recount(); DB.save();
               DB.log('Enrolled learner',v.name+' — '+v.branch,'ok');

@@ -36,6 +36,7 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
 export type Branch = {
   id: string;
   name: string;
+  schoolGrade: "Grade A" | "Grade B";
   slug: string;
   city: string;
   region: string;

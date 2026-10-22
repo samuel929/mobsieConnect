@@ -24,6 +24,13 @@ const statusSchema = z.object({
   interviewDate: z.string().trim().max(80).nullable().optional(),
   interviewTime: z.string().trim().max(40).nullable().optional(),
   teamName: z.string().trim().max(120).nullable().optional(),
+  consents: z.object({
+    informationAccurate: z.literal(true),
+    privacyAccepted: z.literal(true),
+    termsAccepted: z.literal(true),
+    enrolmentTermsAccepted: z.literal(true),
+    photoConsent: z.literal(true),
+  }).optional(),
 });
 
 type ApplicationStatusRow = {
@@ -127,6 +134,10 @@ export default apiHandler<Record<string, unknown>>(
     await query(
       `UPDATE applications
        SET status = $2::application_status,
+           submitted_at = CASE
+             WHEN $2 = 'PENDING_REVIEW' THEN COALESCE(submitted_at, now())
+             ELSE submitted_at
+           END,
            approval_email_sent_at = CASE
              WHEN $2 = 'APPROVED' THEN approval_email_sent_at
              ELSE NULL
@@ -146,6 +157,27 @@ export default apiHandler<Record<string, unknown>>(
        WHERE id = $1`,
       [application.id, input.status],
     );
+
+    if (input.consents) {
+      await query(
+        `INSERT INTO application_consents (
+           application_id, information_accurate, privacy_accepted, terms_accepted,
+           enrolment_terms_accepted, photo_consent, accepted_at, ip_address, user_agent
+         ) VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8)
+         ON CONFLICT (application_id) DO UPDATE SET
+           information_accurate=EXCLUDED.information_accurate,
+           privacy_accepted=EXCLUDED.privacy_accepted,
+           terms_accepted=EXCLUDED.terms_accepted,
+           enrolment_terms_accepted=EXCLUDED.enrolment_terms_accepted,
+           photo_consent=EXCLUDED.photo_consent,
+           accepted_at=now(), ip_address=EXCLUDED.ip_address,
+           user_agent=EXCLUDED.user_agent`,
+        [application.id, input.consents.informationAccurate, input.consents.privacyAccepted,
+          input.consents.termsAccepted, input.consents.enrolmentTermsAccepted,
+          input.consents.photoConsent, req.socket.remoteAddress ?? null,
+          req.headers["user-agent"] ?? null],
+      );
+    }
 
     let emailSent = Boolean(application.approvalEmailSentAt);
     if (input.status === "APPROVED" && !application.approvalEmailSentAt) {

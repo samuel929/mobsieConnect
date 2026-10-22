@@ -4,6 +4,7 @@ window.Pages=window.Pages||{};
   const F=DB.fmtN, Rk=DB.fmtRk, esc=UI.esc;
   const CAMPUS_HUES=['#F97316','#16A34A','#7C3AED','#2563EB','#0D9488','#DB2777','#D97706','#DC2626'];
   const hueOf=b=>CAMPUS_HUES[Math.max(0,DB.branches.indexOf(b))%CAMPUS_HUES.length];
+  const schoolGradeOf=branchName=>{const value=String(branchName||'').trim();return !value||value==='—'?'—':/soshanguve/i.test(value)?'Grade A':'Grade B';};
 
   /* =============== OUR SCHOOL (campus overview) =============== */
   function campusCard(b){
@@ -17,7 +18,7 @@ window.Pages=window.Pages||{};
         <button class="icon-btn" data-campus-menu="${b.id}">${MCIcon('more')}</button>
       </div>
       <div style="display:flex;gap:6px;padding:10px 18px 0;flex-wrap:wrap">
-        ${UI.status(b.status)} ${UI.badge('Since '+b.since,'ink')}
+        ${UI.status(b.status)} ${UI.badge(b.schoolGrade||schoolGradeOf(b.name),(b.schoolGrade||schoolGradeOf(b.name))==='Grade A'?'purple':'ink')} ${UI.badge('Since '+b.since,'ink')}
       </div>
       <div class="sc-stats">
         <div class="sc-stat"><div class="n">${F(b.students)}</div><div class="l">Learners</div></div>
@@ -93,8 +94,8 @@ window.Pages=window.Pages||{};
     bindCampusCards(root);
     root.querySelector('#addCampus').addEventListener('click',()=>addCampusModal());
     root.querySelector('#expCampuses').addEventListener('click',()=>UI.downloadCSV('mobsie-campuses.csv',
-      ['Campus','City','Region','Principal','Status','Learners','Teachers','Attendance %','Fees (R/mo)'],
-      DB.branches.map(b=>[b.name,b.city,b.region,b.principal,b.status,b.students,b.teachers,b.attendance,b.revenue])));
+      ['Campus','School grade','City','Region','Principal','Status','Learners','Teachers','Attendance %','Fees (R/mo)'],
+      DB.branches.map(b=>[b.name,b.schoolGrade||schoolGradeOf(b.name),b.city,b.region,b.principal,b.status,b.students,b.teachers,b.attendance,b.revenue])));
     root.addEventListener('click',e=>{
       const t=e.target.closest('[data-exp-track]');
       if(t){
@@ -162,9 +163,10 @@ window.Pages=window.Pages||{};
           <div class="field"><label>City / area</label><input type="text" data-f="city" placeholder="e.g. Soweto"></div>
         </div>
         <div class="form-row">
+          <div class="field"><label>School grade</label><select data-f="schoolGrade" required><option value="">Select Grade A or B</option><option value="Grade A">Grade A</option><option value="Grade B">Grade B</option></select></div>
           <div class="field"><label>Region</label><select data-f="region"><option>Pretoria</option><option>Johannesburg</option><option>Centurion</option><option>Ekurhuleni</option><option>Other</option></select></div>
-          <div class="field"><label>Principal</label><input type="text" data-f="principal" placeholder="Full name or leave blank"></div>
         </div>
+        <div class="field"><label>Principal</label><input type="text" data-f="principal" placeholder="Full name or leave blank"></div>
         <div class="field"><label>Address</label><input type="text" data-f="address" placeholder="Street address and postal code"></div>
         <div class="form-row">
           <div class="field"><label>Branch phone</label><input type="tel" data-f="phone" placeholder="012 555 0182"></div>
@@ -189,18 +191,19 @@ window.Pages=window.Pages||{};
         r.querySelector('[data-s]').addEventListener('click',async()=>{
           const v=UI.formVals(r);
           const file=imageInput.files[0];
-          if(!v.name||!v.city||!v.address||!v.phone||!v.email||!v.principal||!v.principalEmail||!v.principalPhone||!file){
+          if(!v.name||!v.schoolGrade||!v.city||!v.address||!v.phone||!v.email||!v.principal||!v.principalEmail||!v.principalPhone||!file){
             UI.toast('Complete every campus field and choose a branch image','alert');return;
           }
           if(file.size>5*1024*1024){UI.toast('Branch image must be smaller than 5 MB','alert');return;}
           try{
             const imageData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
             const created=await MobsieApi.mutate('/api/branches',{method:'POST',body:JSON.stringify({
-              name:v.name,city:v.city,region:v.region,address:v.address,phone:v.phone,email:v.email,
+              name:v.name,schoolGrade:v.schoolGrade,city:v.city,region:v.region,address:v.address,phone:v.phone,email:v.email,
               principalName:v.principal,principalEmail:v.principalEmail,principalPhone:v.principalPhone,status:'ACTIVE',imageData
             })});
             const apiBranch=created.data[0];
             DB.branches.push({id:apiBranch.id,schoolId:'sch-1',school:DB.SCHOOL_NAME,name:v.name,
+            schoolGrade:apiBranch.schoolGrade||v.schoolGrade,
             city:v.city||v.name.replace(/ Branch$/,''),region:v.region,
             principal:v.principal||'To be appointed',students:0,teachers:0,revenue:0,attendance:0,
             phone:v.phone,email:v.email,address:v.address,imageUrl:apiBranch.imageUrl,
@@ -229,6 +232,7 @@ window.Pages=window.Pages||{};
             <div class="campus-editor__grid">
               <div class="field"><label>Campus name</label><input type="text" data-f="name" value="${esc(b.name||'')}"></div>
               <div class="field"><label>City / area</label><input type="text" data-f="city" value="${esc(b.city||'')}"></div>
+              <div class="field"><label>School grade</label><select data-f="schoolGrade"><option value="Grade A" ${(b.schoolGrade||schoolGradeOf(b.name))==='Grade A'?'selected':''}>Grade A</option><option value="Grade B" ${(b.schoolGrade||schoolGradeOf(b.name))==='Grade B'?'selected':''}>Grade B</option></select></div>
               <div class="field"><label>Region</label><select data-f="region">${['Pretoria','Johannesburg','Centurion','Ekurhuleni','Other'].map(x=>`<option ${b.region===x?'selected':''}>${x}</option>`).join('')}</select></div>
               <div class="field"><label>Status</label><select data-f="status"><option value="ACTIVE" ${apiStatus==='ACTIVE'?'selected':''}>Active</option><option value="COMING_SOON" ${apiStatus==='COMING_SOON'?'selected':''}>Coming soon</option><option value="INACTIVE" ${apiStatus==='INACTIVE'?'selected':''}>Inactive</option></select></div>
               <div class="field campus-editor__wide"><label>Street address</label><input type="text" data-f="address" value="${esc(b.address||'')}"></div>
@@ -269,18 +273,19 @@ window.Pages=window.Pages||{};
           const v=UI.formVals(r);
           const file=imageInput.files[0];
           if(file&&file.size>5*1024*1024){UI.toast('Branch image must be smaller than 5 MB','alert');return;}
-          if(!v.name||!v.city||!v.region||!v.address||!v.phone||!v.email){UI.toast('Complete the required campus details','alert');return;}
+          if(!v.name||!v.schoolGrade||!v.city||!v.region||!v.address||!v.phone||!v.email){UI.toast('Complete the required campus details','alert');return;}
           const button=r.querySelector('[data-s]');
           button.disabled=true;button.textContent='Saving…';
           try{
             const imageData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):undefined;
             const response=await MobsieApi.mutate('/api/branches',{method:'PUT',body:JSON.stringify({
-              id:b.id,name:v.name,city:v.city,region:v.region,address:v.address,phone:v.phone,email:v.email,
+              id:b.id,name:v.name,schoolGrade:v.schoolGrade,city:v.city,region:v.region,address:v.address,phone:v.phone,email:v.email,
               principalName:v.principal||undefined,principalEmail:v.principalEmail||undefined,
               principalPhone:v.principalPhone||undefined,status:v.status,imageData
             })});
             const saved=response.data[0];
             Object.assign(b,{name:saved.name,city:saved.city,region:saved.region,address:saved.address,phone:saved.phone,email:saved.email,
+              schoolGrade:saved.schoolGrade||v.schoolGrade,
               principal:saved.principalName||'To be appointed',principalEmail:saved.principalEmail||v.principalEmail,
               principalPhone:saved.principalPhone||v.principalPhone,status:saved.status==='COMING_SOON'?'Coming Soon':saved.status==='ACTIVE'?'Active':'Inactive',imageUrl:saved.imageUrl});
             DB.log('Updated campus',b.name,'info');
@@ -329,7 +334,7 @@ window.Pages=window.Pages||{};
           <div class="mini-stat"><span class="ms-ic t-orange">${MCIcon('attendance')}</span><div><div class="ms-val">${b.attendance}%</div><div class="ms-lbl">Attendance</div></div></div>
         </div>
         <h4 style="margin-bottom:10px">Campus details</h4>
-        ${UI.dl([['Principal',esc(b.principal)],['City',esc(b.city)],['Region',esc(b.region)],['Phone',esc(b.phone)]])}
+        ${UI.dl([['School grade',esc(b.schoolGrade||schoolGradeOf(b.name))],['Principal',esc(b.principal)],['City',esc(b.city)],['Region',esc(b.region)],['Phone',esc(b.phone)]])}
         <div class="divider"></div>
         <h4 style="margin-bottom:6px">This campus includes</h4>
         <div class="tag-row" style="margin-top:8px">${['Gallery','Reports','Calendar','Communications','Attendance','Finance'].map(x=>UI.badge(x,'ink')).join('')}</div>`,
@@ -357,6 +362,7 @@ window.Pages=window.Pages||{};
       onRow:openBranch,
       columns:[
         {key:'name',label:'Campus',render:r=>`<div class="cell-main">${esc(r.name)}</div><div class="cell-sub">${esc(r.city)}</div>`},
+        {key:'schoolGrade',label:'School grade',render:r=>UI.badge(r.schoolGrade||schoolGradeOf(r.name),(r.schoolGrade||schoolGradeOf(r.name))==='Grade A'?'purple':'ink')},
         {key:'region',label:'Region'},
         {key:'principal',label:'Principal',render:r=>r.principal==='To be appointed'?`<span class="muted">To be appointed</span>`:UI.personCell(r.principal)},
         {key:'students',label:'Learners',num:true,render:r=>r.status==='Coming Soon'?'—':F(r.students)},
@@ -392,8 +398,8 @@ window.Pages=window.Pages||{};
       root.querySelector('#brQ').addEventListener('input',e=>UI.tableFilter(Pages.branches._tid,e.target.value));
       root.querySelector('#addBranch').addEventListener('click',()=>addCampusModal());
       root.querySelector('#brExp').addEventListener('click',()=>UI.downloadCSV('mobsie-campuses.csv',
-        ['Campus','City','Region','Principal','Status','Learners','Teachers','Attendance %','Fees (R/mo)'],
-        DB.branches.map(b=>[b.name,b.city,b.region,b.principal,b.status,b.students,b.teachers,b.attendance,b.revenue])));
+        ['Campus','School grade','City','Region','Principal','Status','Learners','Teachers','Attendance %','Fees (R/mo)'],
+        DB.branches.map(b=>[b.name,b.schoolGrade||schoolGradeOf(b.name),b.city,b.region,b.principal,b.status,b.students,b.teachers,b.attendance,b.revenue])));
     }
   };
 })();

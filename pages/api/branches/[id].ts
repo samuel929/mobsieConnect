@@ -6,6 +6,7 @@ import { branchSchema } from "@/server/validation";
 type BranchMutation = {
   id: string;
   name: string;
+  schoolGrade?: "Grade A" | "Grade B";
   slug?: string;
   city?: string;
   region?: string;
@@ -62,19 +63,20 @@ export default apiHandler<BranchMutation>(
         `UPDATE branches
          SET name = $3,
              slug = $4,
-             city = $5,
-             region = $6,
-             address = $7,
-             phone = $8,
-             email = $9,
-             image_url = $10,
-             principal_name = $11,
-             principal_email = $12,
-             principal_phone = $13,
-             status = $14,
+             school_grade = $5,
+             city = $6,
+             region = $7,
+             address = $8,
+             phone = $9,
+             email = $10,
+             image_url = $11,
+             principal_name = $12,
+             principal_email = $13,
+             principal_phone = $14,
+             status = $15,
              updated_at = now()
          WHERE id = $1 AND tenant_id = $2 AND status <> 'INACTIVE'
-         RETURNING id, name, slug, city, region, address, phone, email::text,
+         RETURNING id, name, slug, school_grade AS "schoolGrade", city, region, address, phone, email::text,
            image_url AS "imageUrl", principal_name AS "principalName",
            principal_email::text AS "principalEmail", principal_phone AS "principalPhone", status`,
         [
@@ -82,6 +84,7 @@ export default apiHandler<BranchMutation>(
           context.user!.tenantId,
           input.name,
           slug,
+          input.schoolGrade,
           input.city,
           input.region,
           input.address,

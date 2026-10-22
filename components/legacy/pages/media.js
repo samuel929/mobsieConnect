@@ -33,13 +33,126 @@ window.Pages=window.Pages||{};
         <div class="gallery-grid">${rows.map(a=>{const i=DB.albums.indexOf(a);return `
           <div class="g-item" data-album="${i}">
             ${albumArt(a,i+3)}
+            <div class="g-actions" aria-label="Picture actions">
+              <button type="button" class="g-action" data-picture-edit="${i}" title="Edit picture">${MCIcon('edit')}<span>Edit</span></button>
+              <button type="button" class="g-action" data-picture-rename="${i}" title="Rename picture">${MCIcon('file')}<span>Rename</span></button>
+              <button type="button" class="g-action danger" data-picture-delete="${i}" title="Delete picture">${MCIcon('trash')}<span>Delete</span></button>
+            </div>
             <div class="g-cap"><div class="g-nm">${esc(a.name)}</div>
             <div class="g-sub">${esc(a.branch)} · ${a.count} photos · ${a.date}</div></div>
           </div>`;}).join('')}
         </div>`;
     },
     mount(root){
-      root.querySelectorAll('[data-album]').forEach(el=>el.addEventListener('click',()=>{
+      const savePictureChange=(message)=>{
+        DB.save();
+        UI.toast(message);
+        App.refresh();
+      };
+      const fileToDataUrl=(file)=>new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result);
+        reader.onerror=()=>reject(new Error('The selected picture could not be read.'));
+        reader.readAsDataURL(file);
+      });
+
+      root.querySelectorAll('[data-picture-edit]').forEach(button=>button.addEventListener('click',(event)=>{
+        event.stopPropagation();
+        const index=Number(button.dataset.pictureEdit);
+        const picture=DB.albums[index];
+        if(!picture)return;
+        UI.modal({
+          title:'Edit Picture',
+          body:`<div class="field"><label>Picture title</label><input type="text" data-f="name" value="${esc(picture.name)}"></div>
+            <div class="form-row">
+              <div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(branch=>`<option${branch.name===picture.branch?' selected':''}>${esc(branch.name)}</option>`).join('')}</select></div>
+              <div class="field"><label>Photo count</label><input type="number" min="1" data-f="count" value="${Number(picture.count)||1}"></div>
+            </div>
+            <div class="field"><label>Uploaded date</label><input type="text" data-f="date" value="${esc(picture.date||'')}" placeholder="e.g. 22 Oct 2026"></div>
+            <div class="field"><label>Replace picture <span class="muted">(optional)</span></label><label class="file-picker">${MCIcon('upload')}<strong>Choose a new picture</strong><span data-edit-file-name>PNG, JPG or WebP, up to 8 MB</span><input type="file" data-edit-image accept="image/png,image/jpeg,image/webp"></label></div>`,
+          foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Save changes</button>`,
+          mount(modal,close){
+            modal.querySelector('[data-x]').addEventListener('click',close);
+            const imageInput=modal.querySelector('[data-edit-image]');
+            imageInput.addEventListener('change',()=>{modal.querySelector('[data-edit-file-name]').textContent=imageInput.files[0]?.name||'PNG, JPG or WebP, up to 8 MB';});
+            modal.querySelector('[data-s]').addEventListener('click',async()=>{
+              const values=UI.formVals(modal);
+              const replacement=imageInput.files[0];
+              if(!values.name.trim()){UI.toast('Picture title is required','alert');return;}
+              if(replacement&&replacement.size>8*1024*1024){UI.toast('Gallery pictures must be smaller than 8 MB','alert');return;}
+              const saveButton=modal.querySelector('[data-s]');
+              saveButton.disabled=true;
+              saveButton.textContent='Saving…';
+              try{
+                let uploaded=null;
+                if(replacement){
+                  uploaded=await MobsieApi.mutate('/api/uploads',{method:'POST',body:JSON.stringify({fileData:await fileToDataUrl(replacement),originalName:replacement.name,purpose:'gallery'})});
+                }
+                Object.assign(picture,{
+                  name:values.name.trim(),branch:values.branch,
+                  count:Math.max(1,Number(values.count)||1),date:values.date.trim(),
+                  ...(uploaded?{imageUrl:uploaded.data.url,publicId:uploaded.data.publicId}:{}),
+                });
+                DB.log('Edited gallery picture',picture.name+' — '+picture.branch,'ok');
+                close();
+                savePictureChange('Picture changes saved');
+              }catch(error){
+                saveButton.disabled=false;
+                saveButton.textContent='Save changes';
+                UI.toast(error.message||'Picture could not be updated','alert');
+              }
+            });
+          }
+        });
+      }));
+
+      root.querySelectorAll('[data-picture-rename]').forEach(button=>button.addEventListener('click',(event)=>{
+        event.stopPropagation();
+        const index=Number(button.dataset.pictureRename);
+        const picture=DB.albums[index];
+        if(!picture)return;
+        UI.modal({
+          title:'Rename Picture',
+          body:`<div class="field"><label>New picture name</label><input type="text" data-f="name" value="${esc(picture.name)}" autofocus></div>`,
+          foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Rename</button>`,
+          mount(modal,close){
+            modal.querySelector('[data-x]').addEventListener('click',close);
+            modal.querySelector('[data-s]').addEventListener('click',()=>{
+              const name=String(UI.formVals(modal).name||'').trim();
+              if(!name){UI.toast('Enter a picture name','alert');return;}
+              const previousName=picture.name;
+              picture.name=name;
+              DB.log('Renamed gallery picture',previousName+' → '+name,'ok');
+              close();
+              savePictureChange('Picture renamed');
+            });
+          }
+        });
+      }));
+
+      root.querySelectorAll('[data-picture-delete]').forEach(button=>button.addEventListener('click',(event)=>{
+        event.stopPropagation();
+        const index=Number(button.dataset.pictureDelete);
+        const picture=DB.albums[index];
+        if(!picture)return;
+        UI.modal({
+          title:'Delete Picture',
+          body:`<p>Delete <strong>${esc(picture.name)}</strong> from the gallery?</p><p class="small muted">Parents will no longer be able to view this picture. This action cannot be undone.</p>`,
+          foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" data-s>${MCIcon('trash')} Delete picture</button>`,
+          mount(modal,close){
+            modal.querySelector('[data-x]').addEventListener('click',close);
+            modal.querySelector('[data-s]').addEventListener('click',()=>{
+              const removed=DB.albums.splice(index,1)[0];
+              DB.log('Deleted gallery picture',removed.name+' — '+removed.branch,'warn');
+              close();
+              savePictureChange('Picture deleted');
+            });
+          }
+        });
+      }));
+
+      root.querySelectorAll('[data-album]').forEach(el=>el.addEventListener('click',(event)=>{
+        if(event.target.closest('.g-actions'))return;
         const a=DB.albums[+el.dataset.album];
         UI.drawer({
           title:a.name,
