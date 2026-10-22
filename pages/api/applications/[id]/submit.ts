@@ -25,7 +25,12 @@ export default apiHandler<{ reference: string; status: string }>(
   { methods: ["POST"], auth: false },
   async (req, res) => {
     const applicationId = one(req.query.id);
-    if (!applicationId) throw new AppError(400, "APPLICATION_ID_REQUIRED", "Application ID is required.");
+    if (!applicationId)
+      throw new AppError(
+        400,
+        "APPLICATION_ID_REQUIRED",
+        "Application ID is required.",
+      );
     await requireApplicationAccess(req, applicationId);
     const input = consentSchema.parse(req.body);
     const readiness = await query<{
@@ -67,7 +72,11 @@ export default apiHandler<{ reference: string; status: string }>(
     );
     const applicationReadiness = readiness.rows[0];
     if (!applicationReadiness?.hasPreferences) {
-      throw new AppError(422, "PREFERENCES_REQUIRED", "Complete school preferences before submitting.");
+      throw new AppError(
+        422,
+        "PREFERENCES_REQUIRED",
+        "Complete school preferences before submitting.",
+      );
     }
     if (!applicationReadiness.feePayerReady) {
       throw new AppError(
@@ -77,9 +86,15 @@ export default apiHandler<{ reference: string; status: string }>(
       );
     }
     if (!applicationReadiness.paymentComplete) {
-      throw new AppError(422, "PAYMENT_REQUIRED", "Complete the PayFast application-fee payment before submitting.");
+      throw new AppError(
+        422,
+        "PAYMENT_REQUIRED",
+        "Complete the PayFast application-fee payment before submitting.",
+      );
     }
-    const missingDocuments = toStringArray(applicationReadiness.missingDocuments);
+    const missingDocuments = toStringArray(
+      applicationReadiness.missingDocuments,
+    );
     if (missingDocuments.length) {
       throw new AppError(
         422,
@@ -90,14 +105,15 @@ export default apiHandler<{ reference: string; status: string }>(
     const result = await withTransaction(async (client) => {
       await client.query(
         `INSERT INTO application_consents (
-           application_id, information_accurate, privacy_accepted, terms_accepted, enrolment_terms_accepted,
+           application_id, information_accurate, privacy_accepted, terms_accepted, enrolment_terms_accepted, photo_consent,
            accepted_at, ip_address, user_agent
-         ) VALUES ($1,$2,$3,$4,$5,now(),$6,$7)
+         ) VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8)
          ON CONFLICT (application_id) DO UPDATE SET
            information_accurate = EXCLUDED.information_accurate,
            privacy_accepted = EXCLUDED.privacy_accepted,
            terms_accepted = EXCLUDED.terms_accepted, accepted_at = now(),
            enrolment_terms_accepted = EXCLUDED.enrolment_terms_accepted,
+           photo_consent = EXCLUDED.photo_consent,
            ip_address = EXCLUDED.ip_address, user_agent = EXCLUDED.user_agent`,
         [
           applicationId,
@@ -105,6 +121,7 @@ export default apiHandler<{ reference: string; status: string }>(
           input.privacyAccepted,
           input.termsAccepted,
           input.enrolmentTermsAccepted,
+          input.photoConsent,
           req.socket.remoteAddress ?? null,
           req.headers["user-agent"] ?? null,
         ],

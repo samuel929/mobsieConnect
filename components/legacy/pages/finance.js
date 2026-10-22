@@ -7,7 +7,22 @@ window.Pages=window.Pages||{};
   Pages.payments={
     render(){
       const rows=App.scoped(DB.payments);
-      const rs=DB.revSeries;
+      const completed=rows.filter(p=>String(p.status).toLowerCase()==='complete');
+      const pending=rows.filter(p=>['created','pending'].includes(String(p.status).toLowerCase()));
+      const failed=rows.filter(p=>['failed','cancelled'].includes(String(p.status).toLowerCase()));
+      const now=new Date();
+      const thisMonth=completed.filter(p=>{const d=new Date(p.paidAt);return !Number.isNaN(d.getTime())&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+      const collected=thisMonth.reduce((sum,p)=>sum+Number(p.amount||0),0);
+      const pendingValue=pending.reduce((sum,p)=>sum+Number(p.amount||0),0);
+      const failedValue=failed.reduce((sum,p)=>sum+Number(p.amount||0),0);
+      const settled=completed.length+failed.length;
+      const successRate=settled?Math.round(completed.length/settled*1000)/10:0;
+      const days=Array.from({length:7},(_,index)=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-(6-index));return d;});
+      const dailyCollections=days.map(day=>completed.filter(p=>{const d=new Date(p.paidAt);return !Number.isNaN(d.getTime())&&d.toDateString()===day.toDateString();}).reduce((sum,p)=>sum+Number(p.amount||0),0));
+      const methodTotals=completed.reduce((totals,p)=>{totals[p.method]=(totals[p.method]||0)+Number(p.amount||0);return totals;},{});
+      const methodGrandTotal=Object.values(methodTotals).reduce((sum,value)=>sum+Number(value),0);
+      const methodColors=['#EA580C','#7C3AED','#16A34A','#2563EB','#0D9488'];
+      const methods=Object.entries(methodTotals).sort((a,b)=>b[1]-a[1]).map(([name,value],index)=>[name,methodGrandTotal?Math.round(Number(value)/methodGrandTotal*100):0,methodColors[index%methodColors.length]]);
       const tbl=UI.table({
         pageSize:9, rows,
         onRow:p=>UI.drawer({
@@ -15,18 +30,12 @@ window.Pages=window.Pages||{};
           body:`
             <div style="display:flex;gap:8px;margin-bottom:18px">${UI.status(p.status)} ${UI.badge(p.method,'blue')}</div>
             <div style="font-size:30px;font-weight:800;color:var(--ink-900);letter-spacing:-.02em;margin-bottom:16px">${R(p.amount)}</div>
-            ${UI.dl([['Parent',esc(p.parent)],['School',esc(p.school)],['Branch',esc(p.branch)],['Invoice',esc(p.ref)],['Date',esc(p.date)],['Method',esc(p.method)],['Gateway fee',R(Math.round(p.amount*0.029))]])}`,
-          foot:`<button class="btn btn-ghost" id="payRcpt">${MCIcon('printer')} Receipt</button>${p.status==='Failed'?`<button class="btn btn-primary" id="payRetry">${MCIcon('refresh')} Retry Payment</button>`:''}`,
+            ${UI.dl([['Parent',esc(p.parent)],['Email',esc(p.payerEmail||'—')],['Child',esc(p.child||'—')],['Branch',esc(p.branch)],['Application',esc(p.ref)],['Paid',esc(p.date)],['Method',esc(p.method)],['PayFast fee',R(p.fee||0)],['Net settled',R(p.net||0)],['PayFast ID',esc(p.payFastPaymentId||'—')]])}`,
+          foot:`<button class="btn btn-ghost" id="payRcpt">${MCIcon('download')} Export transaction</button>`,
           mount(root,close){
             root.querySelector('#payRcpt').addEventListener('click',()=>UI.downloadCSV('receipt-'+p.id+'.csv',
-              ['Reference','Parent','School','Amount (R)','Method','Date','Status'],
-              [[p.id,p.parent,p.school,p.amount,p.method,p.date,p.status]]));
-            const rt=root.querySelector('#payRetry');
-            if(rt) rt.addEventListener('click',()=>{
-              p.status='Successful';
-              DB.log('Retried payment',p.id+' — '+R(p.amount),'ok');
-              close();UI.toast('Payment retried successfully — '+R(p.amount)+' collected');App.refresh();
-            });
+              ['PayFast ID','Merchant reference','Parent','Email','Child','Branch','Application','Gross (R)','Fee (R)','Net (R)','Method','Date','Status'],
+              [[p.payFastPaymentId,p.merchantPaymentId,p.parent,p.payerEmail,p.child,p.branch,p.ref,p.amount,p.fee,p.net,p.method,p.date,p.status]]));
           }
         }),
         columns:[
@@ -39,25 +48,23 @@ window.Pages=window.Pages||{};
         ],
       });
       Pages.payments._tid=UI.lastTableId();
-      const methods=[['Card',46,'#EA580C'],['Debit Order',28,'#7C3AED'],['EFT',18,'#16A34A'],['Cash / other',8,'#2563EB']];
       return `
         ${UI.pageHead('Payments','Money moving through the platform in real time.',
-          `<button class="btn btn-ghost" id="payExp">${MCIcon('download')} Export</button>
-           <button class="btn btn-green" id="payNew">${MCIcon('plus')} Record Payment</button>`)}
+          `<button class="btn btn-ghost" id="payExp">${MCIcon('download')} Export</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'payments',tint:'t-green',label:'Collected This Month',value:DB.fmtR(DB.totals.mrr),deltaHtml:UI.delta(9.7,'up','vs last month')})}
-          ${UI.statCard({icon:'waiting',tint:'t-amber',label:'Pending Settlement',value:'R41,200',deltaHtml:`<span class="delta flat">clears in 1–2 days</span>`})}
-          ${UI.statCard({icon:'alert',tint:'t-red',label:'Failed Payments',value:'R9,850',deltaHtml:UI.delta(1.8,'down','improving')})}
-          ${UI.statCard({icon:'creditUp',tint:'t-purple',label:'Success Rate',value:'96.8%',deltaHtml:UI.delta(0.4,'up','vs last month')})}
+          ${UI.statCard({icon:'payments',tint:'t-green',label:'Collected This Month',value:R(collected),deltaHtml:`<span class="delta flat">${F(thisMonth.length)} verified PayFast payments</span>`})}
+          ${UI.statCard({icon:'waiting',tint:'t-amber',label:'Awaiting Payment',value:R(pendingValue),deltaHtml:`<span class="delta flat">${F(pending.length)} initiated payments</span>`})}
+          ${UI.statCard({icon:'alert',tint:'t-red',label:'Failed / Cancelled',value:R(failedValue),deltaHtml:`<span class="delta flat">${F(failed.length)} transactions</span>`})}
+          ${UI.statCard({icon:'creditUp',tint:'t-purple',label:'Success Rate',value:successRate+'%',deltaHtml:`<span class="delta flat">verified outcomes</span>`})}
         </div>
         <div class="grid" style="grid-template-columns:1.7fr 1fr;margin-bottom:20px" id="payMid">
           ${UI.card('Collections this week',`
             ${UI.legend([{color:'#16A34A',label:'Collections',line:true}])}
-            <div class="chart-box" style="margin-top:6px">${Charts.line({labels:rs.labels,series:[{name:'Collections',color:'#16A34A',data:rs.revenue.map(v=>Math.round(v/7))}],height:224})}</div>`)}
+            <div class="chart-box" style="margin-top:6px">${Charts.line({labels:days.map(d=>d.toLocaleDateString('en-ZA',{weekday:'short'})),series:[{name:'Collections',color:'#16A34A',data:dailyCollections}],height:224})}</div>`)}
           ${UI.card('Payment methods',`
-            ${methods.map(m=>`<div class="meter-row"><span class="m-lbl">${m[0]}</span><span class="meter"><i style="width:${m[1]}%;background:${m[2]}"></i></span><span class="m-val">${m[1]}%</span></div>`).join('')}
+            ${methods.length?methods.map(m=>`<div class="meter-row"><span class="m-lbl">${esc(m[0])}</span><span class="meter"><i style="width:${m[1]}%;background:${m[2]}"></i></span><span class="m-val">${m[1]}%</span></div>`).join(''):'<div class="empty-state">No completed PayFast payments yet.</div>'}
             <div class="divider"></div>
-            <div class="small muted">Debit orders keep growing — <b style="color:var(--ink-900)">+6% this quarter</b>. Failed card retries recover <b style="color:var(--ink-900)">62%</b> automatically.</div>`,{sub:'Share of value · this month'})}
+            <div class="small muted">Based only on payment methods reported by verified PayFast transactions.</div>`,{sub:'Share of completed payment value'})}
         </div>
         <div class="card">
           <div class="card-head"><div><h3>Recent payments</h3></div><span class="spacer"></span>
@@ -69,32 +76,8 @@ window.Pages=window.Pages||{};
     mount(root){
       root.querySelector('#payQ').addEventListener('input',e=>UI.tableFilter(Pages.payments._tid,e.target.value));
       root.querySelector('#payExp').addEventListener('click',()=>UI.downloadCSV('mobsie-payments.csv',
-        ['Reference','Parent','School','Amount (R)','Method','Date','Status'],
-        DB.payments.map(p=>[p.id,p.parent,p.school,p.amount,p.method,p.date,p.status])));
-      root.querySelector('#payNew').addEventListener('click',()=>UI.modal({
-        title:'Record Payment',
-        body:`<div class="field"><label>Parent</label><select data-f="parent">${DB.parents.slice(0,20).map(p=>`<option>${esc(p.name)}</option>`).join('')}</select></div>
-          <div class="form-row">
-            <div class="field"><label>Amount (R)</label><input type="number" data-f="amount" placeholder="0.00"></div>
-            <div class="field"><label>Method</label><select data-f="method"><option>Cash</option><option>EFT</option><option>Card</option><option>SnapScan</option></select></div>
-          </div>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-green" data-s>Record Payment</button>`,
-        mount(r,close){
-          r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',()=>{
-            const v=UI.formVals(r);
-            const amt=Math.round(+v.amount||0);
-            if(!amt){UI.toast('Enter an amount first','alert');return;}
-            const par=DB.parents.find(p=>p.name===v.parent)||DB.parents[0];
-            DB.payments.unshift({id:'PAY-'+(9033+DB.payments.length),parent:par.name,school:par.school,
-              branch:par.branch,amount:amt,method:v.method,date:'May 18, 2026',status:'Successful',
-              ref:'Manual capture'});
-            if(par.balance) par.balance=Math.max(0,par.balance-amt);
-            DB.log('Recorded payment',par.name+' — '+R(amt),'ok');
-            close();UI.toast(R(amt)+' recorded against '+par.name);App.refresh();
-          });
-        }
-      }));
+        ['PayFast ID','Merchant reference','Parent','Email','Child','Branch','Application','Gross (R)','Fee (R)','Net (R)','Method','Date','Status'],
+        DB.payments.map(p=>[p.payFastPaymentId,p.merchantPaymentId,p.parent,p.payerEmail,p.child,p.branch,p.ref,p.amount,p.fee,p.net,p.method,p.date,p.status])));
     }
   };
 

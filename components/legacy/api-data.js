@@ -26,7 +26,7 @@
 
   const PERSISTED_MODELS = [
     'schools', 'branches', 'teachers', 'parents', 'learners', 'applications', 'appCounts',
-    'waitingList', 'payments', 'invoices', 'conversations', 'newsletters', 'pushLog',
+    'waitingList', 'invoices', 'conversations', 'newsletters', 'pushLog',
     'albums', 'products', 'ordersList', 'documentsList', 'adminUsers', 'rolePerms',
     'auditLog', 'events', 'counters', 'customCal', 'homeworkList', 'docFolders', 'reportRuns',
   ];
@@ -86,11 +86,12 @@
         request('/api/users'),
         request('/api/documents?limit=500'),
         request('/api/newsletters'),
+        request('/api/payments?limit=1000'),
       );
     }
     const results = await Promise.allSettled(calls);
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters] = successful;
+    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments] = successful;
 
     if (branches) {
       window.DB.branches = branches.map((branch) => ({
@@ -211,6 +212,32 @@
         publishedAt:newsletter.publishedAt,recipients:0,openRate:0,status:String(newsletter.status||'SENT').toLowerCase()==='draft'?'Draft':'Sent',content:newsletter.content||{},
       }));
     }
+    if (principal) {
+      // Payments are authoritative financial records. Never retain seed data or
+      // browser-created rows when the live endpoint is empty or unavailable.
+      window.DB.payments=(Array.isArray(payments)?payments:[]).map((payment)=>({
+        id:payment.payFastPaymentId||payment.merchantPaymentId,
+        merchantPaymentId:payment.merchantPaymentId,
+        payFastPaymentId:payment.payFastPaymentId||'',
+        parent:payment.payerName||'Parent',
+        payerEmail:payment.payerEmail||'',
+        child:payment.childName||'',
+        school:window.DB.SCHOOL_NAME,
+        schoolId:'sch-1',
+        branch:payment.branchName||'Not assigned',
+        branchId:payment.branchId||'',
+        amount:Number(payment.grossCents||0)/100,
+        fee:Number(payment.feeCents||0)/100,
+        net:Number(payment.netCents||0)/100,
+        method:payment.method||'PayFast',
+        methodCode:payment.methodCode||'',
+        date:new Date(payment.paidAt||payment.createdAt).toLocaleString('en-ZA'),
+        paidAt:payment.paidAt||'',
+        createdAt:payment.createdAt||'',
+        status:statusLabel(payment.status),
+        ref:payment.applicationReference||'',
+      }));
+    }
     if(roleData?.roles){
       const permissions=roleData.permissions||[];
       window.DB.rolePerms={perms:permissions,roles:roleData.roles.map(role=>({
@@ -240,6 +267,9 @@
         status: statusLabel(application.status),
         date: new Date(application.createdAt).toLocaleDateString('en-ZA'),
         docs: application.documentCount,
+        consentSignedCount: Number(application.consentSignedCount || 0),
+        consentFormsComplete: Number(application.consentSignedCount || 0) >= 5,
+        lastConsentSignedAt: application.lastConsentSignedAt || '',
       }));
       window.DB.counters.pendingReview = applications.filter((item) => item.status === 'PENDING_REVIEW').length;
     }
@@ -305,6 +335,9 @@
         text: item.message || '',
         rating: Number(item.rating || 0),
         status: feedbackStatus[item.status] || statusLabel(item.status || 'NEW'),
+        reply: item.reply || '',
+        repliedAt: item.repliedAt || '',
+        repliedByName: item.repliedByName || 'Mobsie Kids',
         date: item.createdAt
           ? new Date(item.createdAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
           : '',
@@ -314,7 +347,7 @@
     // modal edits are authoritative so a reload cannot undo a saved action.
     if (stored?.data?.state) {
       Object.entries(stored.data.state).forEach(([key, value]) => {
-        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
+        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','payments','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
       });
     }
     // Saved control-centre state may predate the Mobsie Connect rename.

@@ -15,6 +15,27 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse){
   const valid=(await validation.text()).trim()==='VALID';
   if(!valid){res.status(400).send('Invalid payment');return;}
   const status=fields.payment_status==='COMPLETE'?'COMPLETE':fields.payment_status==='CANCELLED'?'CANCELLED':'FAILED';
-  await query(`UPDATE application_payments SET status=$2,pf_payment_id=$3,payment_payload=$4::jsonb,paid_at=CASE WHEN $2='COMPLETE' THEN now() ELSE paid_at END,updated_at=now() WHERE id=$1`,[row.id,status,fields.pf_payment_id||null,JSON.stringify(fields)]);
+  const cents=(value:string|undefined)=>{
+    const amount=Number(value);
+    return Number.isFinite(amount)?Math.round(amount*100):null;
+  };
+  await query(`UPDATE application_payments SET
+    status=$2,
+    pf_payment_id=$3,
+    payment_payload=$4::jsonb,
+    payment_method=$5,
+    amount_gross_cents=$6,
+    amount_fee_cents=$7,
+    amount_net_cents=$8,
+    payer_first_name=$9,
+    payer_last_name=$10,
+    payer_email=$11,
+    paid_at=CASE WHEN $2='COMPLETE' THEN COALESCE(paid_at,now()) ELSE paid_at END,
+    updated_at=now()
+    WHERE id=$1`,[
+      row.id,status,fields.pf_payment_id||null,JSON.stringify(fields),
+      fields.payment_method||null,cents(fields.amount_gross),cents(fields.amount_fee),cents(fields.amount_net),
+      fields.name_first||null,fields.name_last||null,fields.email_address||null,
+    ]);
   res.status(200).send('OK');
 }

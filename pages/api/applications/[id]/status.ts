@@ -45,7 +45,11 @@ export default apiHandler<Record<string, unknown>>(
   async (req, res, { user }) => {
     const identifier = one(req.query.id);
     if (!identifier) {
-      throw new AppError(400, "APPLICATION_ID_REQUIRED", "Application ID is required.");
+      throw new AppError(
+        400,
+        "APPLICATION_ID_REQUIRED",
+        "Application ID is required.",
+      );
     }
     const input = statusSchema.parse(req.body);
 
@@ -72,7 +76,52 @@ export default apiHandler<Record<string, unknown>>(
     );
     const application = existing.rows[0];
     if (!application) {
-      throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found.");
+      throw new AppError(
+        404,
+        "APPLICATION_NOT_FOUND",
+        "Application not found.",
+      );
+    }
+
+    if (input.status === "APPROVED") {
+      const readiness = await query<{
+        submitted: boolean;
+        paymentComplete: boolean;
+        missingDocuments: string[];
+      }>(
+        `SELECT
+           a.submitted_at IS NOT NULL AS submitted,
+           (a.application_type='REREGISTRATION' OR EXISTS (
+             SELECT 1 FROM application_payments p
+             WHERE p.application_id=a.id AND p.status='COMPLETE'
+           )) AS "paymentComplete",
+           ARRAY(
+             SELECT required.kind
+             FROM unnest(ARRAY['LEARNER_PHOTO','BIRTH_CERTIFICATE','PARENT_ID','CLINIC_CARD','PROOF_OF_ADDRESS','PROOF_OF_INCOME']) required(kind)
+             WHERE NOT EXISTS (
+               SELECT 1 FROM application_documents d
+               WHERE d.application_id=a.id AND d.kind::text=required.kind
+                 AND d.review_status='APPROVED'
+             )
+           ) AS "missingDocuments"
+         FROM applications a WHERE a.id=$1`,
+        [application.id],
+      );
+      const state = readiness.rows[0];
+      const blockers = [
+        !state?.submitted ? "submit the application" : null,
+        !state?.paymentComplete ? "confirm the PayFast payment" : null,
+        ...(state?.missingDocuments?.length
+          ? [`approve required documents: ${state.missingDocuments.map((kind) => kind.toLowerCase().replaceAll("_", " ")).join(", ")}`]
+          : []),
+      ].filter((blocker): blocker is string => Boolean(blocker));
+      if (blockers.length) {
+        throw new AppError(
+          422,
+          "APPLICATION_NOT_READY",
+          `Before approving this child, ${blockers.join("; ")}.`,
+        );
+      }
     }
 
     await query(
@@ -135,7 +184,10 @@ export default apiHandler<Record<string, unknown>>(
       );
       emailSent = true;
     }
-    if (input.status === "INTERVIEW_SCHEDULED" && !application.interviewEmailSentAt) {
+    if (
+      input.status === "INTERVIEW_SCHEDULED" &&
+      !application.interviewEmailSentAt
+    ) {
       await sendApplicationInterviewEmail({
         to: application.parentEmail,
         parentName: application.parentName,
@@ -144,7 +196,10 @@ export default apiHandler<Record<string, unknown>>(
         interviewTime: input.interviewTime,
         teamName: input.teamName,
       });
-      await query("UPDATE applications SET interview_email_sent_at=now() WHERE id=$1", [application.id]);
+      await query(
+        "UPDATE applications SET interview_email_sent_at=now() WHERE id=$1",
+        [application.id],
+      );
       emailSent = true;
     }
     if (input.status === "REJECTED" && !application.declinedEmailSentAt) {
@@ -153,7 +208,10 @@ export default apiHandler<Record<string, unknown>>(
         parentName: application.parentName,
         childName: application.childName,
       });
-      await query("UPDATE applications SET declined_email_sent_at=now() WHERE id=$1", [application.id]);
+      await query(
+        "UPDATE applications SET declined_email_sent_at=now() WHERE id=$1",
+        [application.id],
+      );
       emailSent = true;
     }
 

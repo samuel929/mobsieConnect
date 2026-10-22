@@ -21,19 +21,20 @@ export default apiHandler<{ id: string; signedAt: string }>(
     if (!templateId || !title) throw new AppError(404, "FORM_NOT_FOUND", "This consent form is not available.");
     const input = consentCompletionSchema.parse(req.body);
 
-    // A parent may sign consent forms before an enrolment has created a learner
-    // record.  Treat an unknown client-side student id as a parent-level form
-    // rather than returning 404 and losing the completed consent.
-    let verifiedStudentId: string | null = null;
-    if (input.studentId) {
-      const learner = await query<{ id: string }>(
-        `SELECT s.id FROM students s
-         LEFT JOIN applications a ON a.id=s.application_id
-         WHERE s.id=$1 AND s.tenant_id=$2
-           AND (a.parent_account_id=$3 OR lower(trim(s.parent_name))=lower(trim($4)))`,
-        [input.studentId, parent.tenantId, parent.id, parent.name],
-      );
-      verifiedStudentId = learner.rows[0]?.id ?? null;
+    if (!input.studentId) throw new AppError(403, "ENROLMENT_REQUIRED", "Your child must be enrolled before completing forms.");
+    const learner = await query<{ id: string }>(
+      `SELECT s.id FROM students s
+       JOIN applications a ON a.id=s.application_id
+       WHERE s.id=$1 AND s.tenant_id=$2
+         AND a.parent_account_id=$3
+         AND upper(trim(a.reference))=upper(trim($4))
+         AND lower(trim(s.name))=lower(trim($5))
+         AND upper(s.enrollment_status) IN ('ENROLLED','ACTIVE')`,
+      [input.studentId, parent.tenantId, parent.id, input.applicationReference, input.childName],
+    );
+    const verifiedStudentId = learner.rows[0]?.id;
+    if (!verifiedStudentId) {
+      throw new AppError(403, "FORM_IDENTITY_MISMATCH", "The child name or application reference does not match an enrolled child on your account.");
     }
 
     const fallbackHtml = `<article><h1>${title}</h1><p>Completed by ${input.guardianName} for ${input.childName}.</p><p>Signature: ${input.signature}</p></article>`;

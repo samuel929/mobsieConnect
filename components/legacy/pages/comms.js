@@ -1373,11 +1373,11 @@ Pages.messages = {
         <div class="newsletter-studio__intro"><div><h2>Create a campus newsletter</h2><p>A repeatable Mobsie structure — populate the fields, review the email, and send.</p></div><div class="newsletter-steps"><b>01 Content</b><span>→</span><span>02 Review</span><span>→</span><span>03 Send</span></div></div>
         <div class="newsletter-studio__grid">
           <section class="newsletter-editor"><div class="newsletter-panel-head"><h3>Newsletter details</h3><span>* Required fields</span></div><div class="newsletter-editor__body">
-            <div class="newsletter-section-label">Delivery</div><div class="form-row"><div class="field"><label>Send to *</label><select data-f="audience"><option>All campuses</option>${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Subject line *</label><input data-f="subject" value="What's happening at Mobsie"></div></div>
+            <div class="newsletter-section-label">Delivery</div><div class="field"><label>Send to *</label><select data-f="audience"><option>All campuses</option>${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div><div class="field newsletter-field--wide"><label>Subject line *</label><input data-f="subject" value="What's happening at Mobsie"></div>
             <div class="newsletter-section-label">Header &amp; hero</div><div class="field"><label>Header image <span class="muted">(optional)</span></label><label class="newsletter-upload">${MCIcon('upload')}<span><b>Upload a header banner</b><small>Recommended: 1200 × 320 px</small></span><input type="file" data-img="header" accept="image/png,image/jpeg,image/webp"></label></div>
-            <div class="field"><label>Hero heading *</label><input data-f="heroTitle" value="Your campus, in the know."></div><div class="field"><label>Intro copy *</label><textarea data-f="intro">${defaultIntro}</textarea></div>
+            <div class="field newsletter-field--wide"><label>Hero heading *</label><input data-f="heroTitle" value="Your campus, in the know."></div><div class="field"><label>Intro copy *</label><textarea data-f="intro">${defaultIntro}</textarea></div>
             <div class="newsletter-section-label">Featured story</div><div class="field"><label>Featured image</label><label class="newsletter-upload">${MCIcon('gallery')}<span><b>Add a featured image</b><small>Recommended: 1200 × 700 px</small></span><input type="file" data-img="feature" accept="image/png,image/jpeg,image/webp"></label></div>
-            <div class="field"><label>Feature headline</label><input data-f="featureTitle" value="There's more to discover this week"></div><div class="field"><label>Feature copy</label><textarea data-f="featureCopy">Share the update that matters most and give your community a clear next step.</textarea></div>
+            <div class="field newsletter-field--wide"><label>Feature headline</label><input data-f="featureTitle" value="There's more to discover this week"></div><div class="field"><label>Feature copy</label><textarea data-f="featureCopy">Share the update that matters most and give your community a clear next step.</textarea></div>
             <div class="form-row"><div class="field"><label>Button label</label><input data-f="ctaText" value="Open Mobsie"></div><div class="field"><label>Button link</label><input type="url" data-f="ctaLink" value="https://mobsie.app"></div></div>
             <div class="newsletter-section-label">Footer</div><div class="field"><label>Footer message</label><textarea data-f="footer">You are receiving this email because you are part of the Mobsie community.</textarea></div>
           </div></section>
@@ -1601,6 +1601,7 @@ Pages.messages = {
             </div>
             <div style="display:flex;gap:1px;margin-bottom:8px">${stars(f.rating)}</div>
             <p style="font-size:13.5px;color:var(--ink-700);line-height:1.55">“${esc(f.text)}”</p>
+            ${f.reply?`<div style="margin-top:12px;padding:12px;border-radius:12px;background:var(--green-50);font-size:12.5px;line-height:1.5"><strong>${esc(f.repliedByName||'Mobsie Kids')} replied:</strong><br>${esc(f.reply)}</div>`:''}
             <div class="divider" style="margin:12px 0 10px"></div>
             <div style="display:flex;align-items:center">
               ${UI.badge(f.topic,'purple')}
@@ -1624,10 +1625,12 @@ Pages.messages = {
             r.querySelector('[data-x]').addEventListener('click',close);
             r.querySelector('[data-s]').addEventListener('click',async()=>{
               try{
+                const reply=r.querySelector('[data-f="reply"]').value.trim();
+                if(!reply){UI.toast('Type a reply first','alert');return;}
                 await MobsieApi.mutate('/api/mobile-admin/feedback',{
-                  method:'PUT',body:JSON.stringify({id:f.id,status:'RESOLVED'})
+                  method:'PUT',body:JSON.stringify({id:f.id,status:'RESOLVED',reply})
                 });
-                f.status='Responded';
+                f.status='Responded';f.reply=reply;f.repliedByName='Mobsie Kids';f.repliedAt=new Date().toISOString();
                 DB.log('Resolved feedback',f.id+' — '+f.who,'ok');
                 close();UI.toast('Feedback marked as resolved');App.refresh();
               }catch(error){UI.toast(error.message,'error');}

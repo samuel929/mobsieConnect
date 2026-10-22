@@ -30,7 +30,8 @@ export default apiHandler<{ id: string; kind: string; fileUrl: string }>(
       ON CONFLICT (application_id, kind) DO UPDATE SET
         file_url = EXCLUDED.file_url, public_id = EXCLUDED.public_id,
         original_name = EXCLUDED.original_name, mime_type = EXCLUDED.mime_type,
-        bytes = EXCLUDED.bytes, uploaded_at = now()
+        bytes = EXCLUDED.bytes, uploaded_at = now(), review_status = 'PENDING',
+        reviewed_at = NULL, reviewed_by = NULL
       RETURNING id, kind::text, file_url AS "fileUrl"`,
       [
         applicationId,

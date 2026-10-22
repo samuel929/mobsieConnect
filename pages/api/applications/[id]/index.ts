@@ -18,6 +18,7 @@ type ApplicationDetail = {
   parentPhone: string;
   relationship: string;
   childName: string;
+  childIdNumber: string;
   childDateOfBirth: string;
   childGender: string;
   currentGrade: string;
@@ -30,6 +31,18 @@ type ApplicationDocument = {
   kind: string;
   fileUrl: string;
   originalName: string;
+  mimeType: string;
+  bytes: number;
+  reviewStatus: "PENDING" | "APPROVED" | "REJECTED";
+};
+
+type ConsentFormCompletion = {
+  id: string;
+  templateId: string;
+  title: string;
+  childName: string;
+  guardianName: string;
+  signedAt: string;
 };
 
 export default apiHandler<Record<string, unknown>>(
@@ -97,22 +110,12 @@ export default apiHandler<Record<string, unknown>>(
      * ACCESS
      * ------------------------------------------
      */
-    if (
-      req.method === "GET" &&
-      req.headers["x-application-token"]
-    ) {
-      await requireApplicationAccess(
-        req,
-        applicationId,
-      );
+    if (req.method === "GET" && req.headers["x-application-token"]) {
+      await requireApplicationAccess(req, applicationId);
     } else if (req.method === "PUT") {
-      await requireApplicationAccess(
-        req,
-        applicationId,
-      );
+      await requireApplicationAccess(req, applicationId);
     } else {
-      const user =
-        await getRequestUser(req);
+      const user = await getRequestUser(req);
 
       requireRole(user, ["PRINCIPAL"]);
     }
@@ -123,8 +126,7 @@ export default apiHandler<Record<string, unknown>>(
      * ------------------------------------------
      */
     if (req.method === "PUT") {
-      const input =
-        applicationSchema.parse(req.body);
+      const input = applicationSchema.parse(req.body);
 
       const updateResult = await query<{
         id: string;
@@ -138,13 +140,14 @@ export default apiHandler<Record<string, unknown>>(
             parent_phone = $4,
             relationship = $5,
             child_name = $6,
-            child_date_of_birth = $7,
-            child_gender = $8,
-            current_grade = $9,
-            application_type = $10,
-            registration_fee_waived = ($10 = 'REREGISTRATION'),
-            child_has_disability = $11,
-            disability_details = $12
+            child_id_number = $7,
+            child_date_of_birth = $8,
+            child_gender = $9,
+            current_grade = $10,
+            application_type = $11,
+            registration_fee_waived = ($11 = 'REREGISTRATION'),
+            child_has_disability = $12,
+            disability_details = $13
 
           WHERE id = $1
             AND status = 'DRAFT'
@@ -161,6 +164,7 @@ export default apiHandler<Record<string, unknown>>(
           input.relationship,
 
           input.childName,
+          input.childIdNumber,
           input.childDateOfBirth,
           input.childGender,
 
@@ -185,9 +189,8 @@ export default apiHandler<Record<string, unknown>>(
      * LOAD APPLICATION
      * ------------------------------------------
      */
-    const applicationResult =
-      await query<ApplicationDetail>(
-        `
+    const applicationResult = await query<ApplicationDetail>(
+      `
           SELECT
             a.id,
 
@@ -206,6 +209,9 @@ export default apiHandler<Record<string, unknown>>(
 
             a.child_name
               AS "childName",
+
+            a.child_id_number
+              AS "childIdNumber",
 
             a.child_date_of_birth::text
               AS "childDateOfBirth",
@@ -288,11 +294,10 @@ export default apiHandler<Record<string, unknown>>(
 
           LIMIT 1
         `,
-        [applicationId],
-      );
+      [applicationId],
+    );
 
-    const application =
-      applicationResult.rows[0];
+    const application = applicationResult.rows[0];
 
     if (!application) {
       throw new AppError(
@@ -312,9 +317,8 @@ export default apiHandler<Record<string, unknown>>(
      * Only selecting columns that exist in
      * your current application_documents table.
      */
-    const documentsResult =
-      await query<ApplicationDocument>(
-        `
+    const documentsResult = await query<ApplicationDocument>(
+      `
           SELECT
             d.id,
 
@@ -324,7 +328,11 @@ export default apiHandler<Record<string, unknown>>(
               AS "fileUrl",
 
             d.original_name
-              AS "originalName"
+              AS "originalName",
+
+            d.mime_type AS "mimeType",
+            d.bytes,
+            d.review_status AS "reviewStatus"
 
           FROM application_documents d
 
@@ -332,8 +340,24 @@ export default apiHandler<Record<string, unknown>>(
 
           ORDER BY d.id ASC
         `,
-        [applicationId],
-      );
+      [applicationId],
+    );
+
+    const consentFormsResult = await query<ConsentFormCompletion>(
+      `SELECT
+         cfc.id,
+         cfc.template_id AS "templateId",
+         cfc.title,
+         cfc.child_name AS "childName",
+         cfc.guardian_name AS "guardianName",
+         cfc.signed_at::text AS "signedAt"
+       FROM consent_form_completions cfc
+       JOIN students consent_student ON consent_student.id = cfc.student_id
+       WHERE consent_student.application_id = $1
+         AND cfc.tenant_id = (SELECT tenant_id FROM applications WHERE id = $1)
+       ORDER BY cfc.signed_at DESC, cfc.title ASC`,
+      [applicationId],
+    );
 
     /**
      * ------------------------------------------
@@ -346,11 +370,16 @@ export default apiHandler<Record<string, unknown>>(
       data: {
         ...application,
 
-        documents:
-          documentsResult.rows,
+        documents: documentsResult.rows,
 
-        documentCount:
-          documentsResult.rows.length,
+        documentCount: documentsResult.rows.length,
+
+        consentForms: consentFormsResult.rows,
+
+        consentSignedCount: new Set(consentFormsResult.rows.map((form) => form.templateId)).size,
+
+        consentFormsComplete:
+          new Set(consentFormsResult.rows.map((form) => form.templateId)).size >= 5,
       },
     });
   },

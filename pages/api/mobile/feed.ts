@@ -74,12 +74,7 @@ export default apiHandler<Record<string, unknown>>(
                 )
               ORDER BY r.attendance_date DESC LIMIT 365`, [parent.tenantId,parent.id,parent.name,parent.email,parent.phone]),
       getParentEvents(parent),
-      // Keep the mobile feed compatible with older notification tables. The
-      // notification payload is optional for the app UI; delivery/read state is
-      // the important part of this query. Migration 017 adds the data column
-      // for new dashboard sends, but this fallback must not take the complete
-      // school feed offline while an existing database is being upgraded.
-      query(`SELECT n.id,n.title,n.body,'{}'::jsonb AS data,n.created_at::text AS "createdAt",d.read_at::text AS "readAt"
+      query(`SELECT n.id,n.title,n.body,n.data,n.created_at::text AS "createdAt",d.read_at::text AS "readAt"
              FROM mobile_notification_deliveries d JOIN mobile_notifications n ON n.id=d.notification_id
              WHERE d.parent_account_id=$1 ORDER BY n.created_at DESC LIMIT 100`, [parent.id]),
       query(`SELECT id,template_id AS "templateId",title,signed_at::text AS "signedAt",student_id AS "studentId",true AS completed

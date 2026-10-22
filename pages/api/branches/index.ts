@@ -4,7 +4,11 @@ import { branchSchema, branchUpdateSchema } from "@/server/validation";
 import { uploadDataUri } from "@/server/uploads";
 import { AppError } from "@/server/errors";
 import type { Branch } from "@/types/domain";
-import { assertCurrentSession, getRequestUser, requireRole } from "@/server/auth";
+import {
+  assertCurrentSession,
+  getRequestUser,
+  requireRole,
+} from "@/server/auth";
 
 type BranchRow = Branch & { totalCount: string };
 
@@ -25,23 +29,47 @@ export default apiHandler<unknown>(
     if (!tenantId) {
       res.status(422).json({
         ok: false,
-        error: { code: "TENANT_REQUIRED", message: "A tenantId query parameter is required." },
+        error: {
+          code: "TENANT_REQUIRED",
+          message: "A tenantId query parameter is required.",
+        },
       });
       return;
     }
     if (req.method === "DELETE") {
-      const id = one(req.query.id) ?? (typeof req.body === "object" && req.body ? String((req.body as { id?: unknown }).id ?? "") : "");
-      if (!id) throw new AppError(422, "BRANCH_REQUIRED", "Choose a campus to delete.");
+      const id =
+        one(req.query.id) ??
+        (typeof req.body === "object" && req.body
+          ? String((req.body as { id?: unknown }).id ?? "")
+          : "");
+      if (!id)
+        throw new AppError(
+          422,
+          "BRANCH_REQUIRED",
+          "Choose a campus to delete.",
+        );
       const dependencies = await query<{ count: string }>(
         `SELECT (SELECT count(*) FROM students WHERE tenant_id=$1 AND branch_id=$2)
               + (SELECT count(*) FROM applications a JOIN application_preferences p ON p.application_id=a.id WHERE a.tenant_id=$1 AND p.branch_id=$2) AS count`,
         [tenantId, id],
       );
       if (Number(dependencies.rows[0]?.count ?? 0) > 0) {
-        throw new AppError(409, "BRANCH_IN_USE", "This campus has learners or applications. Move them before deleting the campus.");
+        throw new AppError(
+          409,
+          "BRANCH_IN_USE",
+          "This campus has learners or applications. Move them before deleting the campus.",
+        );
       }
-      const removed = await query<{ id: string }>("DELETE FROM branches WHERE id=$1 AND tenant_id=$2 RETURNING id", [id, tenantId]);
-      if (!removed.rows[0]) throw new AppError(404, "BRANCH_NOT_FOUND", "That campus no longer exists.");
+      const removed = await query<{ id: string }>(
+        "DELETE FROM branches WHERE id=$1 AND tenant_id=$2 RETURNING id",
+        [id, tenantId],
+      );
+      if (!removed.rows[0])
+        throw new AppError(
+          404,
+          "BRANCH_NOT_FOUND",
+          "That campus no longer exists.",
+        );
       res.status(200).json({ ok: true, data: removed.rows });
       return;
     }
@@ -87,7 +115,9 @@ export default apiHandler<unknown>(
 
     if (req.method === "PUT") {
       const input = branchUpdateSchema.parse(req.body);
-      const upload = input.imageData ? await uploadDataUri(input.imageData, "branches") : null;
+      const upload = input.imageData
+        ? await uploadDataUri(input.imageData, "branches")
+        : null;
       const result = await query<BranchRow>(
         `UPDATE branches SET
           name=COALESCE($3,name), city=COALESCE($4,city), region=COALESCE($5,region),
@@ -101,13 +131,33 @@ export default apiHandler<unknown>(
           principal_phone AS "principalPhone", learner_count AS "learnerCount",
           teacher_count AS "teacherCount", attendance_rate::float AS "attendanceRate",
           status, created_at::text AS "createdAt", '1' AS "totalCount"`,
-        [input.id, tenantId, input.name ?? null, input.city ?? null, input.region ?? null,
-          input.address ?? null, input.phone ?? null, input.email ?? null, input.principalName ?? null,
-          input.principalEmail ?? null, input.principalPhone ?? null, input.status ?? null,
-          upload?.url ?? null, upload?.publicId ?? null],
+        [
+          input.id,
+          tenantId,
+          input.name ?? null,
+          input.city ?? null,
+          input.region ?? null,
+          input.address ?? null,
+          input.phone ?? null,
+          input.email ?? null,
+          input.principalName ?? null,
+          input.principalEmail ?? null,
+          input.principalPhone ?? null,
+          input.status ?? null,
+          upload?.url ?? null,
+          upload?.publicId ?? null,
+        ],
       );
       if (!result.rows[0]) {
-        res.status(404).json({ ok: false, error: { code: "BRANCH_NOT_FOUND", message: "That campus no longer exists." } });
+        res
+          .status(404)
+          .json({
+            ok: false,
+            error: {
+              code: "BRANCH_NOT_FOUND",
+              message: "That campus no longer exists.",
+            },
+          });
         return;
       }
       res.status(200).json({ ok: true, data: result.rows });
@@ -134,6 +184,7 @@ export default apiHandler<unknown>(
         count(*) OVER()::text AS "totalCount"
        FROM branches b
        WHERE b.tenant_id = $1 ${cursorSql}
+         AND b.status = 'ACTIVE'
          AND ($${searchIndex} = '' OR b.name ILIKE $${searchIndex} OR b.city ILIKE $${searchIndex})
        ORDER BY b.created_at DESC, b.id DESC
        LIMIT $2`,
@@ -145,7 +196,7 @@ export default apiHandler<unknown>(
       ok: true,
       data: rows,
       meta: {
-        nextCursor: hasMore ? rows.at(-1)?.id ?? null : null,
+        nextCursor: hasMore ? (rows.at(-1)?.id ?? null) : null,
         total: Number(result.rows[0]?.totalCount ?? 0),
       },
     });

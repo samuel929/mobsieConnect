@@ -16,6 +16,7 @@ type ApplicationPdfRow = {
   parentPhone: string;
   relationship: string;
   childName: string;
+  childIdNumber: string | null;
   childDateOfBirth: string;
   childGender: string;
   currentGrade: string;
@@ -69,7 +70,10 @@ function wrap(text: string, width = 88) {
 }
 
 function escapePdf(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
 }
 
 function makePdf(lines: PdfLine[]) {
@@ -120,13 +124,17 @@ function makePdf(lines: PdfLine[]) {
   const offsets = [0];
   objects.forEach((object, index) => {
     offsets.push(Buffer.concat(chunks).length);
-    chunks.push(Buffer.from(`${index + 1} 0 obj\n${object}\nendobj\n`, "latin1"));
+    chunks.push(
+      Buffer.from(`${index + 1} 0 obj\n${object}\nendobj\n`, "latin1"),
+    );
   });
   const xrefOffset = Buffer.concat(chunks).length;
   const xref = [
     `xref\n0 ${objects.length + 1}`,
     "0000000000 65535 f ",
-    ...offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `),
+    ...offsets
+      .slice(1)
+      .map((offset) => `${String(offset).padStart(10, "0")} 00000 n `),
     `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>`,
     `startxref\n${xrefOffset}\n%%EOF`,
   ].join("\n");
@@ -136,7 +144,9 @@ function makePdf(lines: PdfLine[]) {
 
 function addField(lines: PdfLine[], name: string, value: unknown) {
   const wrapped = wrap(`${name}: ${label(value)}`);
-  wrapped.forEach((text, index) => lines.push({ text, bold: index === 0 && text === `${name}:` }));
+  wrapped.forEach((text, index) =>
+    lines.push({ text, bold: index === 0 && text === `${name}:` }),
+  );
 }
 
 export default apiHandler<unknown>(
@@ -145,14 +155,19 @@ export default apiHandler<unknown>(
     const user = await getRequestUser(req);
     requireRole(user, ["PRINCIPAL"]);
     const identifier = one(req.query.id);
-    if (!identifier) throw new AppError(400, "APPLICATION_ID_REQUIRED", "Application ID is required.");
+    if (!identifier)
+      throw new AppError(
+        400,
+        "APPLICATION_ID_REQUIRED",
+        "Application ID is required.",
+      );
 
     const result = await query<ApplicationPdfRow>(
       `SELECT a.id,a.reference,a.status::text,a.application_type AS "applicationType",
               a.submitted_at::text AS "submittedAt",a.created_at::text AS "createdAt",
               a.parent_name AS "parentName",a.parent_email::text AS "parentEmail",
               a.parent_phone AS "parentPhone",a.relationship,
-              a.child_name AS "childName",a.child_date_of_birth::text AS "childDateOfBirth",
+              a.child_name AS "childName",a.child_id_number AS "childIdNumber",a.child_date_of_birth::text AS "childDateOfBirth",
               a.child_gender AS "childGender",a.current_grade AS "currentGrade",
               a.child_has_disability AS "childHasDisability",a.disability_details AS "disabilityDetails",
               b.name AS "branchName",p.school_type AS "schoolType",p.school_stage AS "schoolStage",
@@ -171,7 +186,12 @@ export default apiHandler<unknown>(
       [user.tenantId, identifier],
     );
     const application = result.rows[0];
-    if (!application) throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found.");
+    if (!application)
+      throw new AppError(
+        404,
+        "APPLICATION_NOT_FOUND",
+        "Application not found.",
+      );
 
     const documents = await query<ApplicationDocument>(
       `SELECT kind,original_name AS "originalName"
@@ -182,13 +202,25 @@ export default apiHandler<unknown>(
     const lines: PdfLine[] = [
       { text: "MOBSIE CONNECT", size: 18, bold: true, gap: 24 },
       { text: "ENROLMENT APPLICATION", size: 15, bold: true, gap: 25 },
-      { text: `Application reference: ${clean(application.reference)}`, size: 11, bold: true },
-      { text: `Generated: ${new Date().toLocaleString("en-ZA")}`, size: 9, gap: 24 },
+      {
+        text: `Application reference: ${clean(application.reference)}`,
+        size: 11,
+        bold: true,
+      },
+      {
+        text: `Generated: ${new Date().toLocaleString("en-ZA")}`,
+        size: 9,
+        gap: 24,
+      },
       { text: "APPLICATION STATUS", size: 12, bold: true, gap: 19 },
     ];
     addField(lines, "Status", application.status);
     addField(lines, "Application type", application.applicationType);
-    addField(lines, "Submitted", application.submittedAt ?? application.createdAt);
+    addField(
+      lines,
+      "Submitted",
+      application.submittedAt ?? application.createdAt,
+    );
     lines.push({ text: "PARENT / GUARDIAN", size: 12, bold: true, gap: 19 });
     addField(lines, "Name", application.parentName);
     addField(lines, "Relationship", application.relationship);
@@ -196,26 +228,58 @@ export default apiHandler<unknown>(
     addField(lines, "Phone", application.parentPhone);
     lines.push({ text: "CHILD DETAILS", size: 12, bold: true, gap: 19 });
     addField(lines, "Name", application.childName);
+    addField(lines, "ID number", application.childIdNumber ?? "Not supplied");
     addField(lines, "Date of birth", application.childDateOfBirth);
     addField(lines, "Gender", application.childGender);
     addField(lines, "Current grade", application.currentGrade);
-    addField(lines, "Disability disclosed", application.childHasDisability ? "Yes" : "No");
-    if (application.childHasDisability) addField(lines, "Support details", application.disabilityDetails);
+    addField(
+      lines,
+      "Disability disclosed",
+      application.childHasDisability ? "Yes" : "No",
+    );
+    if (application.childHasDisability)
+      addField(lines, "Support details", application.disabilityDetails);
     lines.push({ text: "SCHOOL PREFERENCES", size: 12, bold: true, gap: 19 });
     addField(lines, "Preferred branch", application.branchName);
     addField(lines, "School type", application.schoolType);
     addField(lines, "Stage", application.schoolStage);
     addField(lines, "Start date", application.preferredStartDate);
     addField(lines, "Attendance", application.enrollmentType);
-    addField(lines, "Aftercare", application.aftercareRequested ? "Requested" : "Not requested");
+    addField(
+      lines,
+      "Aftercare",
+      application.aftercareRequested ? "Requested" : "Not requested",
+    );
     addField(lines, "Previous school", application.previousSchool);
     addField(lines, "Medical / allergy information", application.allergies);
-    addField(lines, "Emergency contact", [application.emergencyContactName, application.emergencyContactPhone].filter(Boolean).join(" - "));
-    addField(lines, "Person responsible for fees", [application.feePayerFirstName, application.feePayerLastName].filter(Boolean).join(" "));
+    addField(
+      lines,
+      "Emergency contact",
+      [application.emergencyContactName, application.emergencyContactPhone]
+        .filter(Boolean)
+        .join(" - "),
+    );
+    addField(
+      lines,
+      "Person responsible for fees",
+      [application.feePayerFirstName, application.feePayerLastName]
+        .filter(Boolean)
+        .join(" "),
+    );
     lines.push({ text: "UPLOADED DOCUMENTS", size: 12, bold: true, gap: 19 });
     if (!documents.rows.length) lines.push({ text: "No documents uploaded." });
-    documents.rows.forEach((document, index) => addField(lines, `${index + 1}. ${label(document.kind)}`, document.originalName));
-    lines.push({ text: "This document was generated by Mobsie Connect.", size: 8, gap: 12 });
+    documents.rows.forEach((document, index) =>
+      addField(
+        lines,
+        `${index + 1}. ${label(document.kind)}`,
+        document.originalName,
+      ),
+    );
+    lines.push({
+      text: "This document was generated by Mobsie Connect.",
+      size: 8,
+      gap: 12,
+    });
 
     const pdf = makePdf(lines);
     const fileName = `mobsie-application-${application.reference.replace(/[^A-Za-z0-9_-]/g, "-")}.pdf`;

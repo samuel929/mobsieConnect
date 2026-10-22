@@ -5,6 +5,7 @@ import { query } from "@/server/db";
 const updateSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(["NEW", "OPEN", "READ", "RESOLVED"]),
+  reply: z.string().trim().min(1).max(4_000),
 });
 
 export default apiHandler<Record<string, unknown>[]>(
@@ -13,10 +14,10 @@ export default apiHandler<Record<string, unknown>[]>(
     if (req.method === "PUT") {
       const input = updateSchema.parse(req.body);
       const result = await query<Record<string, unknown>>(
-        `UPDATE parent_feedback SET status=$1
+        `UPDATE parent_feedback SET status=$1,reply=$4,replied_at=now(),replied_by=$5
          WHERE id=$2 AND tenant_id=$3
-         RETURNING id,status`,
-        [input.status, input.id, user!.tenantId],
+         RETURNING id,status,reply,replied_at::text AS "repliedAt"`,
+        [input.status, input.id, user!.tenantId, input.reply, user!.id],
       );
       if (!result.rows[0]) {
         res.status(404).json({
@@ -31,10 +32,12 @@ export default apiHandler<Record<string, unknown>[]>(
 
     const result = await query<Record<string, unknown>>(
       `SELECT f.id,p.name AS "parentName",b.name AS "branchName",f.category,f.message,f.rating,f.status,
+         f.reply,f.replied_at::text AS "repliedAt",u.name AS "repliedByName",
          f.created_at::text AS "createdAt"
        FROM parent_feedback f
        JOIN parent_accounts p ON p.id=f.parent_account_id
        LEFT JOIN branches b ON b.id=p.preferred_branch_id
+       LEFT JOIN users u ON u.id=f.replied_by
        WHERE f.tenant_id=$1
        ORDER BY f.created_at DESC,f.id DESC LIMIT $2`,
       [user!.tenantId, pageLimit(req.query.limit, 500)],

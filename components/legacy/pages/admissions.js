@@ -132,6 +132,20 @@ window.Pages=window.Pages||{};
     Number(a.docs) ||
     0;
 
+  const requiredConsentForms = [
+    {id:'excursion-consent',title:'Excursion Consent'},
+    {id:'photography-consent',title:'Photography & Media Consent'},
+    {id:'medical-consent',title:'Medical Information & Treatment Consent'},
+    {id:'transport-consent',title:'Transport Consent'},
+    {id:'general-consent',title:'General Consent & School Policies'},
+  ];
+  const signedConsentForms = Array.isArray(detail?.consentForms) ? detail.consentForms : [];
+  const signedConsentByTemplate = new Map(
+    signedConsentForms.map(form=>[String(form.templateId||''),form])
+  );
+  const consentSignedCount = requiredConsentForms.filter(form=>signedConsentByTemplate.has(form.id)).length;
+  const allConsentFormsSigned = consentSignedCount === requiredConsentForms.length;
+
   const preferenceDetails =
     preferences
       ? `
@@ -310,8 +324,11 @@ window.Pages=window.Pages||{};
 
               const fileSize =
                 document.fileSize ||
+                document.bytes ||
                 document.size ||
                 null;
+
+              const reviewStatus = String(document.reviewStatus || "PENDING").toUpperCase();
 
               const formattedSize =
                 fileSize
@@ -407,6 +424,11 @@ window.Pages=window.Pages||{};
                     </div>
                   </div>
 
+                  ${UI.badge(
+                    reviewStatus === "APPROVED" ? "Approved" : reviewStatus === "REJECTED" ? "Rejected" : "Pending review",
+                    reviewStatus === "APPROVED" ? "green" : reviewStatus === "REJECTED" ? "red" : "amber"
+                  )}
+
                   ${
                     fileUrl
                       ? `
@@ -437,6 +459,8 @@ window.Pages=window.Pages||{};
                         </span>
                       `
                   }
+                  <button class="btn btn-ghost btn-sm" data-doc-review="APPROVED" data-doc-id="${esc(document.id || "")}">${MCIcon("check")} Approve</button>
+                  <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject</button>
                 </div>
               `;
             })
@@ -485,6 +509,38 @@ window.Pages=window.Pages||{};
           </p>
         </div>
       `;
+
+  const consentPanel = `
+    <div class="divider"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div>
+        <h4 style="margin:0">Forms & consent</h4>
+        <div class="small muted">Parent signature status for this application</div>
+      </div>
+      ${UI.badge(
+        allConsentFormsSigned ? 'All forms signed' : consentSignedCount + ' of ' + requiredConsentForms.length + ' signed',
+        allConsentFormsSigned ? 'green' : 'amber'
+      )}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${requiredConsentForms.map(requiredForm=>{
+        const completion=signedConsentByTemplate.get(requiredForm.id);
+        const signedDate=completion?.signedAt
+          ? new Date(completion.signedAt).toLocaleString('en-ZA')
+          : '';
+        return `<div class="feed-item" style="border:1px solid var(--ink-100);border-radius:12px;padding:11px;align-items:center">
+          <span class="f-ic ${completion?'t-green':'t-amber'}">${MCIcon(completion?'check':'waiting')}</span>
+          <div class="f-txt" style="min-width:0;flex:1">
+            <div class="f-main">${esc(requiredForm.title)}</div>
+            <div class="f-sub">${completion
+              ? 'Signed by '+esc(completion.guardianName||detail?.parentName||a.parent||'Parent')+(signedDate?' · '+esc(signedDate):'')
+              : 'Awaiting parent signature'}</div>
+          </div>
+          ${UI.badge(completion?'Signed':'Not signed',completion?'green':'amber')}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
 
   UI.drawer({
     title:
@@ -667,6 +723,8 @@ window.Pages=window.Pages||{};
 
       ${documentsPanel}
 
+      ${consentPanel}
+
       <div class="divider"></div>
 
       <h4 style="margin-bottom:10px">
@@ -774,6 +832,26 @@ window.Pages=window.Pages||{};
     `,
 
     mount(root, close) {
+      root.querySelectorAll("[data-doc-review]").forEach((reviewButton) =>
+        reviewButton.addEventListener("click", async (event) => {
+          const button = event.currentTarget;
+          const documentId = button.dataset.docId;
+          if (!documentId) return;
+          button.disabled = true;
+          try {
+            await MobsieApi.mutate(
+              "/api/applications/" + encodeURIComponent(applicationIdentifier) + "/documents/" + encodeURIComponent(documentId),
+              { method: "PUT", body: JSON.stringify({ reviewStatus: button.dataset.docReview }) }
+            );
+            UI.toast("Document marked " + String(button.dataset.docReview || "").toLowerCase());
+            close();
+            await openApplication(a);
+          } catch (error) {
+            button.disabled = false;
+            UI.toast(error.message || "Could not review the document", "alert");
+          }
+        })
+      );
       root
         .querySelector(
           "#apApprove"
@@ -938,6 +1016,10 @@ function formatDocumentSize(bytes) {
         {key:'school',label:'School',render:r=>`<div>${esc(r.school)}</div><div class="cell-sub">${esc(r.branch)}</div>`},
         {key:'date',label:'Submitted'},
         {key:'docs',label:'Docs',num:true,render:r=>`${r.docs}/10`},
+        {key:'consentSignedCount',label:'Consent',render:r=>UI.badge(
+          Number(r.consentSignedCount||0)>=5?'Signed':`${Number(r.consentSignedCount||0)}/5 signed`,
+          Number(r.consentSignedCount||0)>=5?'green':'amber'
+        )},
         {key:'status',label:'Status',render:r=>UI.status(r.status)},
         {label:'Actions',sortable:false,render:r=>{
           const identifier=r.dbId||r.databaseId||r.applicationId||r.id;

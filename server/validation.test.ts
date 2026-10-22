@@ -16,9 +16,10 @@ describe("API validation", () => {
         parentPhone: "0821234567",
         relationship: "Mother",
         childName: "Prince Tau",
+        childIdNumber: "2205270000006",
         childDateOfBirth: "2022-05-27",
         childGender: "BOY",
-        currentGrade: "Nursery",
+        currentGrade: "STAGE_4",
       }),
     ).toMatchObject({ childGender: "BOY" });
   });

@@ -41,7 +41,8 @@ export default apiHandler<unknown>(
 
       const input = applicationSchema.parse(req.body);
       const access = createApplicationAccessToken();
-      const reference = `APP-${new Date().getFullYear()}-${crypto.randomUUID()
+      const reference = `APP-${new Date().getFullYear()}-${crypto
+        .randomUUID()
         .slice(0, 8)
         .toUpperCase()}`;
 
@@ -49,10 +50,10 @@ export default apiHandler<unknown>(
         `INSERT INTO applications (
            tenant_id, reference, access_token_hash,
            parent_name, parent_email, parent_phone, relationship,
-           child_name, child_date_of_birth, child_gender, current_grade,
+           child_name, child_id_number, child_date_of_birth, child_gender, current_grade,
            application_type, registration_fee_waived, child_has_disability, disability_details
          )
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING id, reference, status::text`,
         [
           tenantId,
@@ -63,6 +64,7 @@ export default apiHandler<unknown>(
           input.parentPhone,
           input.relationship,
           input.childName,
+          input.childIdNumber,
           input.childDateOfBirth,
           input.childGender,
           input.currentGrade,
@@ -97,6 +99,7 @@ export default apiHandler<unknown>(
          a.parent_phone AS "parentPhone",
          a.relationship,
          a.child_name AS "childName",
+         a.child_id_number AS "childIdNumber",
          a.child_date_of_birth::text AS "childDateOfBirth",
          a.child_gender AS "childGender",
          a.current_grade AS "currentGrade",
@@ -110,6 +113,8 @@ export default apiHandler<unknown>(
          b.id AS "branchId",
          b.name AS "branchName",
          COALESCE(d.document_count, 0)::int AS "documentCount",
+         COALESCE(c.consent_signed_count, 0)::int AS "consentSignedCount",
+         c.last_consent_signed_at::text AS "lastConsentSignedAt",
          CASE WHEN p.application_id IS NULL THEN NULL ELSE jsonb_build_object(
            'branchId', p.branch_id,
            'branchName', b.name,
@@ -138,6 +143,15 @@ export default apiHandler<unknown>(
          FROM application_documents ad
          WHERE ad.application_id = a.id
        ) d ON true
+       LEFT JOIN LATERAL (
+         SELECT
+           count(DISTINCT cfc.template_id) AS consent_signed_count,
+           max(cfc.signed_at) AS last_consent_signed_at
+         FROM students consent_student
+         JOIN consent_form_completions cfc ON cfc.student_id = consent_student.id
+         WHERE consent_student.application_id = a.id
+           AND cfc.tenant_id = a.tenant_id
+       ) c ON true
        WHERE a.tenant_id = $1
          AND ($2 = '' OR a.status::text = $2)
          AND (
