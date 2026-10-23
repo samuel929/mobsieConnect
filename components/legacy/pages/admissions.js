@@ -131,6 +131,28 @@ window.Pages=window.Pages||{};
   const preferences =
     detail?.preferences || null;
 
+  const payment = detail?.payment || null;
+  const enrollment = detail?.enrollment || null;
+  const submissionConsents = detail?.submissionConsents || null;
+  const shown = value => value === null || value === undefined || value === ''
+    ? '—'
+    : esc(String(value).replace(/_/g, ' '));
+  const yesNo = value => value === null || value === undefined ? '—' : value ? 'Yes' : 'No';
+  const dateTime = value => {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? shown(value) : esc(parsed.toLocaleString('en-ZA'));
+  };
+  const money = cents => cents === null || cents === undefined
+    ? '—'
+    : esc(new Intl.NumberFormat('en-ZA',{style:'currency',currency:'ZAR'}).format(Number(cents)/100));
+  const detailSection = (title, rows, subtitle='') => `
+    <div class="divider"></div>
+    <h4 style="margin:0 0 4px">${esc(title)}</h4>
+    ${subtitle ? `<div class="small muted" style="margin-bottom:10px">${esc(subtitle)}</div>` : '<div style="height:6px"></div>'}
+    ${UI.dl(rows)}
+  `;
+
   /**
    * Documents returned from PostgreSQL / API.
    */
@@ -160,96 +182,65 @@ window.Pages=window.Pages||{};
   const consentSignedCount = requiredConsentForms.filter(form=>signedConsentByTemplate.has(form.id)).length;
   const allConsentFormsSigned = consentSignedCount === requiredConsentForms.length;
 
-  const preferenceDetails =
-    preferences
-      ? `
-        <div class="divider"></div>
+  const preferenceDetails = detailSection('School preferences', [
+    ['Preferred branch', shown(preferences?.branchName || a.branch)],
+    ['School grade', shown(schoolGradeOf(preferences?.branchName || a.branch))],
+    ['Reason for branch', shown(preferences?.reason)],
+    ['Type of school', shown(preferences?.schoolType)],
+    ['Stage', shown(preferences?.schoolStage)],
+    ['Preferred start date', shown(preferences?.preferredStartDate)],
+    ['Enrolment type', shown(preferences?.enrollmentType)],
+    ['Aftercare requested', yesNo(preferences?.aftercareRequested)],
+    ['Attended preschool', yesNo(preferences?.attendedPreschool)],
+    ['Previous school', shown(preferences?.previousSchool)],
+    ['Previous school phone', shown(preferences?.previousSchoolPhone)],
+    ['Referral source', shown(preferences?.referralSource)],
+  ]);
 
-        <h4 style="margin-bottom:10px">
-          School preferences & emergency details
-        </h4>
+  const medicalDetails = detailSection('Medical & emergency information', [
+    ['Allergies / medical information', shown(preferences?.allergies)],
+    ['Disability disclosed', yesNo(detail?.childHasDisability ?? a.childHasDisability)],
+    ['Disability details', shown(detail?.disabilityDetails || a.disabilityDetails)],
+    ['Emergency contact name', shown(preferences?.emergencyContactName)],
+    ['Emergency contact phone', shown(preferences?.emergencyContactPhone)],
+  ]);
 
-        ${UI.dl([
-          [
-            "Preferred branch",
-            esc(
-              preferences.branchName ||
-                "—"
-            ),
-          ],
-          [
-            "School grade",
-            esc(schoolGradeOf(preferences.branchName || a.branch)),
-          ],
-          [
-            "Reason for branch",
-            esc(
-              preferences.reason ||
-                "—"
-            ),
-          ],
-          [
-            "Preferred start date",
-            esc(
-              preferences.preferredStartDate ||
-                "—"
-            ),
-          ],
-          [
-            "Enrolment type",
-            esc(
-              String(
-                preferences.enrollmentType ||
-                  "—"
-              ).replace(/_/g, " ")
-            ),
-          ],
-          [
-            "Aftercare",
-            preferences.aftercareRequested ? "Included" : "Not selected",
-          ],
-          [
-            "Previous school",
-            esc(
-              preferences.previousSchool ||
-                "—"
-            ),
-          ],
-          [
-            "Previous school phone",
-            esc(
-              preferences.previousSchoolPhone ||
-                "—"
-            ),
-          ],
-          [
-            "Referral source",
-            esc(
-              preferences.referralSource ||
-                "—"
-            ),
-          ],
-          [
-            "Medical information",
-            esc(
-              preferences.allergies ||
-                "None supplied"
-            ),
-          ],
-          [
-            "Emergency contact",
-            esc(
-              [
-                preferences.emergencyContactName,
-                preferences.emergencyContactPhone,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "—"
-            ),
-          ],
-        ])}
-      `
-      : "";
+  const paymentDetails = detailSection('Fee payer & payment', [
+    ['Fee payer first name', shown(preferences?.feePayerFirstName)],
+    ['Fee payer surname', shown(preferences?.feePayerLastName)],
+    ['Fee payer terms accepted', yesNo(preferences?.feePayerTermsAccepted)],
+    ['Registration fee', detail?.registrationFeeWaived ? 'Waived for re-registration' : 'Required'],
+    ['Payment status', shown(payment?.status)],
+    ['Provider', shown(payment?.provider)],
+    ['Amount requested', money(payment?.amountCents)],
+    ['Gross amount paid', money(payment?.amountGrossCents)],
+    ['Transaction fee', money(payment?.amountFeeCents)],
+    ['Net amount', money(payment?.amountNetCents)],
+    ['Payment method', shown(payment?.paymentMethod)],
+    ['Merchant payment reference', shown(payment?.merchantPaymentId)],
+    ['PayFast payment ID', shown(payment?.payfastPaymentId)],
+    ['Payer name', shown([payment?.payerFirstName,payment?.payerLastName].filter(Boolean).join(' '))],
+    ['Payer email', shown(payment?.payerEmail)],
+    ['Paid at', dateTime(payment?.paidAt)],
+    ['Payment created', dateTime(payment?.createdAt)],
+  ], payment ? 'Latest PayFast transaction for this application' : 'No payment transaction has been recorded yet');
+
+  const submissionConsentDetails = detailSection('Onboarding declarations & consent', [
+    ['Information confirmed accurate', yesNo(submissionConsents?.informationAccurate)],
+    ['Privacy policy accepted', yesNo(submissionConsents?.privacyAccepted)],
+    ['Terms accepted', yesNo(submissionConsents?.termsAccepted)],
+    ['Enrolment terms accepted', yesNo(submissionConsents?.enrolmentTermsAccepted)],
+    ['Photography consent', yesNo(submissionConsents?.photoConsent)],
+    ['Accepted at', dateTime(submissionConsents?.acceptedAt)],
+  ]);
+
+  const collectionDetails = detailSection('Collection & mobile enrolment', [
+    ['Mobile enrolment completed', yesNo(Boolean(enrollment))],
+    ['Pickup password configured', yesNo(enrollment?.pickupPasswordConfigured)],
+    ['Primary authorised collector', shown(enrollment?.primaryCollector)],
+    ['Secondary authorised collector', shown(enrollment?.secondaryCollector)],
+    ['Confirmed at', dateTime(enrollment?.confirmedAt)],
+  ], 'For security, the pickup password itself is never displayed');
 
   /**
    * Uploaded documents UI.
@@ -347,6 +338,7 @@ window.Pages=window.Pages||{};
                 null;
 
               const reviewStatus = String(document.reviewStatus || "PENDING").toUpperCase();
+              const uploadedAt = document.uploadedAt || document.uploaded_at || null;
 
               const formattedSize =
                 fileSize
@@ -442,6 +434,7 @@ window.Pages=window.Pages||{};
                             )}`
                           : ""
                       }
+                      ${uploadedAt ? ` · Uploaded ${dateTime(uploadedAt)}` : ""}
                     </div>
                   </div>
 
@@ -571,7 +564,7 @@ window.Pages=window.Pages||{};
   UI.drawer({
     title:
       "Application " +
-      (a.id || ""),
+      (detail?.reference || a.id || ""),
 
     headIcon: `
       <span
@@ -600,7 +593,7 @@ window.Pages=window.Pages||{};
         "
       >
         ${UI.avatar(
-          a.child,
+          detail?.childName || a.child,
           "xl"
         )}
 
@@ -613,14 +606,14 @@ window.Pages=window.Pages||{};
             "
           >
             ${esc(
-              a.child
+              detail?.childName || a.child
             )}
           </div>
 
           <div class="muted small">
             Applying for
             ${esc(
-              a.grade
+              detail?.currentGrade || a.grade
             )}
             ·
             ${esc(
@@ -636,104 +629,30 @@ window.Pages=window.Pages||{};
         </span>
       </div>
 
-      ${UI.dl([
-        [
-          "Parent",
-          esc(
-            detail?.parentName ||
-              a.parent ||
-              "—"
-          ),
-        ],
+      ${detailSection('Application record', [
+        ['Application reference', shown(detail?.reference || a.id)],
+        ['Database ID', shown(detail?.id || a.databaseId || a.applicationId)],
+        ['Status', shown(detail?.status || a.status)],
+        ['Application type', shown(detail?.applicationType || a.applicationType || 'NEW')],
+        ['Created', dateTime(detail?.createdAt)],
+        ['Submitted', dateTime(detail?.submittedAt || a.date)],
+        ['Last updated', dateTime(detail?.updatedAt)],
+        ['Documents uploaded', `${documentCount}`],
+      ])}
 
-        [
-          "Email",
-          esc(
-            detail?.parentEmail ||
-              a.email ||
-              "—"
-          ),
-        ],
+      ${detailSection('Parent / guardian information', [
+        ['Full name', shown(detail?.parentName || a.parent)],
+        ['Relationship to child', shown(detail?.relationship)],
+        ['Email address', shown(detail?.parentEmail || a.email)],
+        ['Mobile number', shown(detail?.parentPhone || a.phone)],
+      ])}
 
-        [
-          "Phone",
-          esc(
-            detail?.parentPhone ||
-              a.phone ||
-              "—"
-          ),
-        ],
-
-        [
-          "School",
-          esc(
-            a.school ||
-              "—"
-          ),
-        ],
-
-        [
-          "Branch",
-          esc(
-            preferences?.branchName ||
-              a.branch ||
-              "—"
-          ),
-        ],
-
-        [
-          "School grade",
-          esc(schoolGradeOf(preferences?.branchName || a.branch)),
-        ],
-
-        [
-          "Grade",
-          esc(
-            a.grade ||
-              "—"
-          ),
-        ],
-
-        [
-          "Application type",
-          esc(String(detail?.applicationType || a.applicationType || "NEW").replace(/_/g, " ")),
-        ],
-
-        [
-          "Registration fee",
-          (detail?.registrationFeeWaived || a.registrationFeeWaived) ? "Waived for re-registration" : "Required",
-        ],
-
-        [
-          "Disability disclosed",
-          (detail?.childHasDisability ?? a.childHasDisability) ? "Yes" : "No",
-        ],
-
-        ...(detail?.childHasDisability || a.childHasDisability ? [[
-          "Disability details",
-          esc(detail?.disabilityDetails || a.disabilityDetails || "Not supplied"),
-        ]] : []),
-
-        [
-          "Person responsible for fees",
-          esc([
-            preferences?.feePayerFirstName,
-            preferences?.feePayerLastName,
-          ].filter(Boolean).join(" ") || "—"),
-        ],
-
-        [
-          "Submitted",
-          esc(
-            a.date ||
-              "—"
-          ),
-        ],
-
-        [
-          "Documents",
-          `${documentCount} uploaded`,
-        ],
+      ${detailSection('Child information', [
+        ['Full name', shown(detail?.childName || a.child)],
+        ['ID / passport number', shown(detail?.childIdNumber)],
+        ['Date of birth', shown(detail?.childDateOfBirth)],
+        ['Gender', shown(detail?.childGender)],
+        ['Current grade', shown(detail?.currentGrade || a.grade)],
       ])}
 
       <div style="margin-top:10px">
@@ -751,6 +670,14 @@ window.Pages=window.Pages||{};
       </div>
 
       ${preferenceDetails}
+
+      ${medicalDetails}
+
+      ${paymentDetails}
+
+      ${submissionConsentDetails}
+
+      ${collectionDetails}
 
       ${documentsPanel}
 

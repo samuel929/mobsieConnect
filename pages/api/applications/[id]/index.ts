@@ -23,6 +23,10 @@ type ApplicationDetail = {
   childGender: string;
   currentGrade: string;
   status: string;
+  registrationFeeWaived: boolean;
+  submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
   preferences: Record<string, unknown> | null;
 };
 
@@ -34,6 +38,43 @@ type ApplicationDocument = {
   mimeType: string;
   bytes: number;
   reviewStatus: "PENDING" | "APPROVED" | "REJECTED";
+  uploadedAt: string;
+};
+
+type ApplicationConsent = {
+  informationAccurate: boolean;
+  privacyAccepted: boolean;
+  termsAccepted: boolean;
+  enrolmentTermsAccepted: boolean;
+  photoConsent: boolean;
+  acceptedAt: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+};
+
+type ApplicationPayment = {
+  id: string;
+  provider: string;
+  merchantPaymentId: string;
+  amountCents: number;
+  status: string;
+  payfastPaymentId: string | null;
+  paymentMethod: string | null;
+  amountGrossCents: number | null;
+  amountFeeCents: number | null;
+  amountNetCents: number | null;
+  payerFirstName: string | null;
+  payerLastName: string | null;
+  payerEmail: string | null;
+  paidAt: string | null;
+  createdAt: string;
+};
+
+type MobileEnrollment = {
+  primaryCollector: string;
+  secondaryCollector: string | null;
+  confirmedAt: string;
+  pickupPasswordConfigured: boolean;
 };
 
 type ConsentFormCompletion = {
@@ -223,10 +264,14 @@ export default apiHandler<Record<string, unknown>>(
               AS "currentGrade",
 
             a.application_type AS "applicationType",
+            a.registration_fee_waived AS "registrationFeeWaived",
             a.child_has_disability AS "childHasDisability",
             COALESCE(a.disability_details, '') AS "disabilityDetails",
 
             a.status,
+            a.submitted_at::text AS "submittedAt",
+            a.created_at::text AS "createdAt",
+            a.updated_at::text AS "updatedAt",
 
             CASE
               WHEN p.application_id IS NULL
@@ -235,9 +280,6 @@ export default apiHandler<Record<string, unknown>>(
               ELSE jsonb_build_object(
                 'branchId',
                 p.branch_id,
-
-                'branchName',
-                b.name,
 
                 'branchName',
                 b.name,
@@ -278,7 +320,16 @@ export default apiHandler<Record<string, unknown>>(
                 p.emergency_contact_name,
 
                 'emergencyContactPhone',
-                p.emergency_contact_phone
+                p.emergency_contact_phone,
+
+                'feePayerFirstName',
+                to_jsonb(p)->>'fee_payer_first_name',
+
+                'feePayerLastName',
+                to_jsonb(p)->>'fee_payer_last_name',
+
+                'feePayerTermsAccepted',
+                COALESCE((to_jsonb(p)->>'fee_payer_terms_accepted')::boolean, false)
               )
             END AS preferences
 
@@ -332,7 +383,8 @@ export default apiHandler<Record<string, unknown>>(
 
             d.mime_type AS "mimeType",
             d.bytes,
-            d.review_status AS "reviewStatus"
+            d.review_status AS "reviewStatus",
+            d.uploaded_at::text AS "uploadedAt"
 
           FROM application_documents d
 
@@ -340,6 +392,58 @@ export default apiHandler<Record<string, unknown>>(
 
           ORDER BY d.id ASC
         `,
+      [applicationId],
+    );
+
+    const submissionConsentsResult = await query<ApplicationConsent>(
+      `SELECT
+         information_accurate AS "informationAccurate",
+         privacy_accepted AS "privacyAccepted",
+         terms_accepted AS "termsAccepted",
+         enrolment_terms_accepted AS "enrolmentTermsAccepted",
+         photo_consent AS "photoConsent",
+         accepted_at::text AS "acceptedAt",
+         host(ip_address) AS "ipAddress",
+         user_agent AS "userAgent"
+       FROM application_consents
+       WHERE application_id = $1
+       LIMIT 1`,
+      [applicationId],
+    );
+
+    const paymentResult = await query<ApplicationPayment>(
+      `SELECT
+         id,
+         provider,
+         merchant_payment_id AS "merchantPaymentId",
+         amount_cents AS "amountCents",
+         status,
+         pf_payment_id AS "payfastPaymentId",
+         payment_method AS "paymentMethod",
+         amount_gross_cents AS "amountGrossCents",
+         amount_fee_cents AS "amountFeeCents",
+         amount_net_cents AS "amountNetCents",
+         payer_first_name AS "payerFirstName",
+         payer_last_name AS "payerLastName",
+         payer_email::text AS "payerEmail",
+         paid_at::text AS "paidAt",
+         created_at::text AS "createdAt"
+       FROM application_payments
+       WHERE application_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [applicationId],
+    );
+
+    const enrollmentResult = await query<MobileEnrollment>(
+      `SELECT
+         primary_collector AS "primaryCollector",
+         secondary_collector AS "secondaryCollector",
+         confirmed_at::text AS "confirmedAt",
+         true AS "pickupPasswordConfigured"
+       FROM mobile_enrollments
+       WHERE application_id = $1
+       LIMIT 1`,
       [applicationId],
     );
 
@@ -380,6 +484,12 @@ export default apiHandler<Record<string, unknown>>(
 
         consentFormsComplete:
           new Set(consentFormsResult.rows.map((form) => form.templateId)).size >= 5,
+
+        submissionConsents: submissionConsentsResult.rows[0] ?? null,
+
+        payment: paymentResult.rows[0] ?? null,
+
+        enrollment: enrollmentResult.rows[0] ?? null,
       },
     });
   },

@@ -20,7 +20,9 @@ export async function withParentApplicationState(parent: ParentSession): Promise
        FROM applications a
       WHERE a.tenant_id=$1
         AND (a.parent_account_id=$2 OR lower(a.parent_email::text)=lower($3))
-      ORDER BY a.created_at DESC
+      ORDER BY
+        CASE WHEN a.status IN ('APPROVED','ENROLLED') THEN 0 ELSE 1 END,
+        a.created_at DESC
       LIMIT 1`,
     [parent.tenantId, parent.id, parent.email],
   );
