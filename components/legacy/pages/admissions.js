@@ -191,6 +191,9 @@ window.Pages=window.Pages||{};
     ['Preferred start date', shown(preferences?.preferredStartDate)],
     ['Enrolment type', shown(preferences?.enrollmentType)],
     ['Aftercare requested', yesNo(preferences?.aftercareRequested)],
+    ['Aftercare option', preferences?.aftercareRequested ? shown(preferences?.aftercareOption) : 'Not requested'],
+    ['Transport requested', yesNo(preferences?.transportRequested)],
+    ['Transport location', preferences?.transportRequested ? shown(preferences?.transportRoute) : 'Not requested'],
     ['Attended preschool', yesNo(preferences?.attendedPreschool)],
     ['Previous school', shown(preferences?.previousSchool)],
     ['Previous school phone', shown(preferences?.previousSchoolPhone)],
@@ -646,6 +649,13 @@ window.Pages=window.Pages||{};
         ['Email address', shown(detail?.parentEmail || a.email)],
         ['Mobile number', shown(detail?.parentPhone || a.phone)],
       ])}
+
+      ${detail?.additionalGuardianName ? detailSection('Additional guardian information', [
+        ['Full name', shown(detail.additionalGuardianName)],
+        ['Relationship to child', shown(detail.additionalGuardianRelationship)],
+        ['Email address', shown(detail.additionalGuardianEmail)],
+        ['Mobile number', shown(detail.additionalGuardianPhone)],
+      ]) : ''}
 
       ${detailSection('Child information', [
         ['Full name', shown(detail?.childName || a.child)],

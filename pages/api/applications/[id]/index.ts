@@ -17,6 +17,10 @@ type ApplicationDetail = {
   parentEmail: string;
   parentPhone: string;
   relationship: string;
+  additionalGuardianName: string | null;
+  additionalGuardianRelationship: string | null;
+  additionalGuardianEmail: string | null;
+  additionalGuardianPhone: string | null;
   childName: string;
   childIdNumber: string;
   childDateOfBirth: string;
@@ -100,7 +104,7 @@ export default apiHandler<Record<string, unknown>>(
      * 2bc7c408-...
      *
      * OR application reference:
-     * S1-2026-92A51901
+     * S1-92A51901
      */
     const identifier = one(req.query.id);
 
@@ -180,15 +184,19 @@ export default apiHandler<Record<string, unknown>>(
             parent_email = $3,
             parent_phone = $4,
             relationship = $5,
-            child_name = $6,
-            child_id_number = $7,
-            child_date_of_birth = $8,
-            child_gender = $9,
-            current_grade = $10,
-            application_type = $11,
-            registration_fee_waived = ($11 = 'REREGISTRATION'),
-            child_has_disability = $12,
-            disability_details = $13
+            additional_guardian_name = $6,
+            additional_guardian_relationship = $7,
+            additional_guardian_email = $8,
+            additional_guardian_phone = $9,
+            child_name = $10,
+            child_id_number = $11,
+            child_date_of_birth = $12,
+            child_gender = $13,
+            current_grade = $14,
+            application_type = $15,
+            registration_fee_waived = ($15 = 'REREGISTRATION'),
+            child_has_disability = $16,
+            disability_details = $17
 
           WHERE id = $1
             AND status = 'DRAFT'
@@ -203,6 +211,10 @@ export default apiHandler<Record<string, unknown>>(
           input.parentPhone,
 
           input.relationship,
+          input.additionalGuardianEnabled ? input.additionalGuardianName || null : null,
+          input.additionalGuardianEnabled ? input.additionalGuardianRelationship || null : null,
+          input.additionalGuardianEnabled ? input.additionalGuardianEmail || null : null,
+          input.additionalGuardianEnabled ? input.additionalGuardianPhone || null : null,
 
           input.childName,
           input.childIdNumber,
@@ -247,6 +259,10 @@ export default apiHandler<Record<string, unknown>>(
               AS "parentPhone",
 
             a.relationship,
+            a.additional_guardian_name AS "additionalGuardianName",
+            a.additional_guardian_relationship AS "additionalGuardianRelationship",
+            a.additional_guardian_email::text AS "additionalGuardianEmail",
+            a.additional_guardian_phone AS "additionalGuardianPhone",
 
             a.child_name
               AS "childName",
@@ -300,6 +316,12 @@ export default apiHandler<Record<string, unknown>>(
                 p.enrollment_type,
                 'aftercareRequested',
                 COALESCE((to_jsonb(p)->>'aftercare_requested')::boolean, false),
+                'aftercareOption',
+                to_jsonb(p)->>'aftercare_option',
+                'transportRequested',
+                COALESCE((to_jsonb(p)->>'transport_requested')::boolean, false),
+                'transportRoute',
+                to_jsonb(p)->>'transport_route',
 
                 'previousSchool',
                 p.previous_school,

@@ -230,14 +230,50 @@ window.Pages=window.Pages||{};
         </div>
       </div>`,foot:`<div class="people-edit-actions"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Save Changes</button></div>`,mount(r,close){r.querySelector('[data-x]').addEventListener('click',close);r.querySelector('[data-s]').addEventListener('click',async()=>{const v=UI.formVals(r);if(!v.name||!v.email||!v.phone||!v.branchId){UI.toast('Complete all parent details','alert');return;}const button=r.querySelector('[data-s]');button.disabled=true;try{await window.MobsieApi.mutate(`/api/parents/${encodeURIComponent(p.id)}`,{method:'PUT',body:JSON.stringify({name:v.name,email:v.email,phone:v.phone,branchId:v.branchId})});close();await window.MobsieApi.load();UI.toast('Parent changes saved to Neon.');App.refresh();}catch(error){button.disabled=false;UI.toast(error.message||'Could not update parent','alert');}});}});
   }
-  async function deleteParent(p){if(!confirm(`Delete ${p.name}?`))return;try{await window.MobsieApi.mutate(`/api/parents/${encodeURIComponent(p.id)}`,{method:'DELETE'});await window.MobsieApi.load();UI.toast('Parent deleted from Neon.');App.refresh();}catch(error){UI.toast(error.message||'Could not delete parent','alert');}}
+  function deleteParent(p,sourceButton){
+    UI.modal({
+      title:'Remove parent and children permanently',
+      body:`<div class="people-edit-form">
+        <p class="people-edit-form__intro"><b>${esc(p.name)}</b> (${esc(p.email)}) will immediately lose access to the mobile app.</p>
+        <div class="people-edit-form__section">
+          <div class="people-edit-form__section-title">This cannot be undone</div>
+          <p class="muted">This permanently deletes the parent login, ${F(p.children)} enrolled child record${Number(p.children)===1?'':'s'}, ${F(p.applications)} application${Number(p.applications)===1?'':'s'}, uploaded application documents, payments, messages, feedback, forms, notifications and other parent-linked mobile records.</p>
+        </div>
+      </div>`,
+      foot:`<button type="button" class="btn btn-ghost" data-x>Cancel</button><button type="button" class="btn btn-danger" data-s>${MCIcon('delete')} Delete permanently</button>`,
+      mount(r,close){
+        const remove=r.querySelector('[data-s]');
+        r.querySelector('[data-x]').addEventListener('click',close);
+        remove.addEventListener('click',async()=>{
+          remove.disabled=true;remove.textContent='Deleting…';
+          if(sourceButton)sourceButton.disabled=true;
+          try{
+            const response=await window.MobsieApi.mutate(`/api/parents/${encodeURIComponent(p.id)}`,{method:'DELETE'});
+            // Remove the confirmed record immediately. The API transaction is
+            // authoritative; the following refresh only reconciles the rest of
+            // the dashboard with Neon.
+            DB.parents=DB.parents.filter(parent=>String(parent.id)!==String(p.id));
+            DB.learners=DB.learners.filter(learner=>String(learner.parentAccountId||'')!==String(p.id));
+            close();App.refresh();
+            await window.MobsieApi.load();
+            const result=response.data?.[0]||{};
+            UI.toast(`${p.name} and ${F(result.children||0)} child record${Number(result.children)===1?'':'s'} were deleted from the database.`);App.refresh();
+          }catch(error){
+            remove.disabled=false;remove.innerHTML=`${MCIcon('delete')} Delete parent and children`;
+            if(sourceButton)sourceButton.disabled=false;
+            UI.toast(error.message||'Could not delete parent','alert');
+          }
+        });
+      }
+    });
+  }
 
   Pages.parents={
     render(){
       const rows=App.scoped(DB.parents);
       const owing=rows.filter(p=>p.balance>0);
       const stats=DB.parentStats||{};
-      const totalParents=Number(stats.totalParents??rows.length);
+      const totalParents=rows.length;
       const newThisMonth=Number(stats.newThisMonth??0);
       const adoption=Number(stats.appAdoptionPercent??0);
       const arrears=Number(stats.accountsInArrears??owing.length);
@@ -249,15 +285,16 @@ window.Pages=window.Pages||{};
           {key:'name',label:'Parent',render:r=>UI.personCell(r.name,r.email)},
           {key:'branch',label:'Campus'},
           {key:'children',label:'Children',num:true},
+          {key:'applications',label:'Applications',num:true},
           {key:'phone',label:'Phone'},
-          {key:'balance',label:'Balance',num:true,render:r=>r.balance?`<b style="color:var(--red-600)">${R(r.balance)}</b>`:`<span style="color:var(--green-600);font-weight:650">R0</span>`},
+          {key:'lastLogin',label:'Last app login'},
           {key:'status',label:'Status',render:r=>UI.status(r.status)},
-          {label:'',sortable:false,render:()=>`<button class="icon-btn">${MCIcon('chevRight')}</button>`},
+          {label:'Actions',sortable:false,render:r=>`<button type="button" class="btn btn-danger btn-sm" data-remove-parent-id="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">${MCIcon('delete')} Remove</button>`},
         ],
       });
       Pages.parents._tid=UI.lastTableId();
       return `
-        ${UI.pageHead('Parents','Families using the Mobsie Connect app — accounts, balances and engagement.',
+        ${UI.pageHead('Mobile App Parents','Every parent account registered in the Mobsie Connect app, including incomplete and inactive accounts.',
           `<button class="btn btn-ghost" id="pEmailAll">${MCIcon('campaigns')} Email All</button>
            <button class="btn btn-primary" id="pAdd">${MCIcon('plus')} Add Parent</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
@@ -267,12 +304,22 @@ window.Pages=window.Pages||{};
           ${UI.statCard({icon:'heart',tint:'t-green',label:'Satisfaction (CSAT)',value:rating,deltaHtml:`<span class="delta flat">from ${F(ratingCount)} rating${ratingCount===1?'':'s'}</span>`})}
         </div>
         <div class="card">
-          <div class="card-head"><div><h3>Parent directory</h3></div><span class="spacer"></span>
+          <div class="card-head"><div><h3>Mobile app user directory</h3><div class="sub">Open a parent to view or permanently remove their account and linked children</div></div><span class="spacer"></span>
             <div class="toolbar" style="margin:0"><div class="input-wrap" style="min-width:220px">${MCIcon('search')}<input id="pQ" placeholder="Search parents…"></div></div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div>
         </div>`;
     },
     mount(root){
+      // Delegate from the page root so the action continues working after
+      // searching, sorting or pagination replaces the table rows.
+      root.addEventListener('click',event=>{
+        const button=event.target.closest('[data-remove-parent-id]');
+        if(!button||!root.contains(button))return;
+        event.preventDefault();event.stopPropagation();
+        const parent=DB.parents.find(item=>String(item.id)===String(button.dataset.removeParentId));
+        if(!parent){UI.toast('This parent record is no longer available. Refreshing the list.','alert');window.MobsieApi.load().then(()=>App.refresh());return;}
+        deleteParent(parent,button);
+      });
       root.querySelector('#pQ').addEventListener('input',e=>UI.tableFilter(Pages.parents._tid,e.target.value));
       root.querySelector('#pEmailAll').addEventListener('click',()=>UI.modal({
         title:'Email Parents',

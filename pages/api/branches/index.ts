@@ -178,7 +178,12 @@ export default apiHandler<unknown>(
     values.push(search ? `%${search}%` : "");
     const searchIndex = values.length;
     const result = await query<BranchRow>(
-      `SELECT b.id, b.name, b.slug, b.school_grade AS "schoolGrade", b.city, b.region, b.address, b.phone,
+      `SELECT b.id, b.name, b.slug,
+        COALESCE(
+          NULLIF(to_jsonb(b)->>'school_grade', ''),
+          CASE WHEN b.name ILIKE '%soshanguve%' THEN 'Grade A' ELSE 'Grade B' END
+        ) AS "schoolGrade",
+        b.city, b.region, b.address, b.phone,
         b.email::text, b.image_url AS "imageUrl", b.principal_name AS "principalName", b.principal_email::text AS "principalEmail",
         b.principal_phone AS "principalPhone", b.learner_count AS "learnerCount",
         b.teacher_count AS "teacherCount", b.attendance_rate::float AS "attendanceRate",

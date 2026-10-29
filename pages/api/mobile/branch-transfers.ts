@@ -43,7 +43,7 @@ export default apiHandler<unknown>({ methods: ["GET", "POST"], auth: false }, as
     if(student.branchId===input.toBranchId) throw new AppError(422,"SAME_BRANCH","Select a different branch.");
     const branch=await client.query<{name:string}>("SELECT name FROM branches WHERE id=$1 AND tenant_id=$2 AND status='ACTIVE'",[input.toBranchId,parent.tenantId]);
     if(!branch.rows[0]) throw new AppError(422,"BRANCH_NOT_FOUND","The selected branch is unavailable.");
-    const newReference=`${prefix(branch.rows[0].name)}-${new Date().getFullYear()}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
+    const newReference=`${prefix(branch.rows[0].name)}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
     await client.query("UPDATE students SET branch_id=$2,updated_at=now() WHERE id=$1",[student.id,input.toBranchId]);
     if(student.applicationId){
       await client.query("UPDATE application_preferences SET branch_id=$2,updated_at=now() WHERE application_id=$1",[student.applicationId,input.toBranchId]);

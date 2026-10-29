@@ -34,6 +34,9 @@ export default apiHandler<{ saved: true; reference: string }>(
       preferredStartDate: body.preferredStartDate ?? body.preferred_start_date,
       enrollmentType: body.enrollmentType ?? body.enrollment_type,
       aftercareRequested: body.aftercareRequested ?? body.aftercare_requested ?? false,
+      aftercareOption: body.aftercareOption ?? body.aftercare_option ?? "",
+      transportRequested: body.transportRequested ?? body.transport_requested ?? false,
+      transportRoute: body.transportRoute ?? body.transport_route ?? "",
       previousSchool: body.previousSchool ?? body.previous_school,
       previousSchoolPhone: body.previousSchoolPhone ?? body.previous_school_phone,
       referralSource: body.referralSource ?? body.referral_source,
@@ -59,14 +62,17 @@ export default apiHandler<{ saved: true; reference: string }>(
         application_id, branch_id, reason, school_type, school_stage, preferred_start_date, enrollment_type,
         previous_school, previous_school_phone, referral_source, attended_preschool, allergies, emergency_contact_name,
         emergency_contact_phone, fee_payer_first_name, fee_payer_last_name, fee_payer_terms_accepted,
-        aftercare_requested
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        aftercare_requested, aftercare_option, transport_requested, transport_route
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       ON CONFLICT (application_id) DO UPDATE SET
         branch_id = EXCLUDED.branch_id, reason = EXCLUDED.reason,
         school_type = EXCLUDED.school_type, school_stage = EXCLUDED.school_stage,
         preferred_start_date = EXCLUDED.preferred_start_date,
         enrollment_type = EXCLUDED.enrollment_type,
         aftercare_requested = EXCLUDED.aftercare_requested,
+        aftercare_option = EXCLUDED.aftercare_option,
+        transport_requested = EXCLUDED.transport_requested,
+        transport_route = EXCLUDED.transport_route,
         previous_school = EXCLUDED.previous_school,
         previous_school_phone = EXCLUDED.previous_school_phone,
         referral_source = EXCLUDED.referral_source,
@@ -86,8 +92,8 @@ export default apiHandler<{ saved: true; reference: string }>(
         input.schoolStage,
         input.preferredStartDate,
         input.enrollmentType,
-        input.previousSchool ?? null,
-        input.previousSchoolPhone,
+        input.attendedPreschool ? input.previousSchool || null : null,
+        input.attendedPreschool ? input.previousSchoolPhone || null : null,
         input.referralSource,
         input.attendedPreschool,
         input.allergies ?? null,
@@ -97,10 +103,13 @@ export default apiHandler<{ saved: true; reference: string }>(
         input.feePayerLastName ?? "",
         input.feePayerTermsAccepted,
         input.enrollmentType === "FULL_TIME" && input.aftercareRequested,
+        input.aftercareRequested ? input.aftercareOption || null : null,
+        input.transportRequested,
+        input.transportRequested ? input.transportRoute || null : null,
       ],
     );
     const prefix = branchReferencePrefix(branch.rows[0].name);
-    const reference = `${prefix}-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const reference = `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const updated = await query<{ reference: string }>(
       `UPDATE applications SET reference=$2, updated_at=now()
        WHERE id=$1 AND status='DRAFT' RETURNING reference`,

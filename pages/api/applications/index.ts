@@ -3,6 +3,7 @@ import { createApplicationAccessToken } from "@/server/applicationAccess";
 import { getRequestUser, requireRole } from "@/server/auth";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { getOptionalParent } from "@/server/parentAuth";
 import { applicationSchema } from "@/server/validation";
 
 type CreatedApplication = {
@@ -39,30 +40,39 @@ export default apiHandler<unknown>(
         throw new AppError(404, "TENANT_NOT_FOUND", "School not found.");
       }
 
+      const parent = await getOptionalParent(req);
+      if (parent && parent.tenantId !== tenantId) {
+        throw new AppError(403, "TENANT_MISMATCH", "This school is not available for your account.");
+      }
+
       const input = applicationSchema.parse(req.body);
       const access = createApplicationAccessToken();
-      const reference = `APP-${new Date().getFullYear()}-${crypto
-        .randomUUID()
-        .slice(0, 8)
-        .toUpperCase()}`;
+      const reference = `APP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
       const created = await query<CreatedApplication>(
         `INSERT INTO applications (
            tenant_id, reference, access_token_hash,
+           parent_account_id,
            parent_name, parent_email, parent_phone, relationship,
+           additional_guardian_name, additional_guardian_relationship, additional_guardian_email, additional_guardian_phone,
            child_name, child_id_number, child_date_of_birth, child_gender, current_grade,
            application_type, registration_fee_waived, child_has_disability, disability_details
          )
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
          RETURNING id, reference, status::text`,
         [
           tenantId,
           reference,
           access.hash,
+          parent?.id ?? null,
           input.parentName,
           input.parentEmail,
           input.parentPhone,
           input.relationship,
+          input.additionalGuardianEnabled ? input.additionalGuardianName || null : null,
+          input.additionalGuardianEnabled ? input.additionalGuardianRelationship || null : null,
+          input.additionalGuardianEnabled ? input.additionalGuardianEmail || null : null,
+          input.additionalGuardianEnabled ? input.additionalGuardianPhone || null : null,
           input.childName,
           input.childIdNumber,
           input.childDateOfBirth,
@@ -98,6 +108,10 @@ export default apiHandler<unknown>(
          a.parent_email::text AS "parentEmail",
          a.parent_phone AS "parentPhone",
          a.relationship,
+         a.additional_guardian_name AS "additionalGuardianName",
+         a.additional_guardian_relationship AS "additionalGuardianRelationship",
+         a.additional_guardian_email::text AS "additionalGuardianEmail",
+         a.additional_guardian_phone AS "additionalGuardianPhone",
          a.child_name AS "childName",
          a.child_id_number AS "childIdNumber",
          a.child_date_of_birth::text AS "childDateOfBirth",
@@ -124,6 +138,9 @@ export default apiHandler<unknown>(
            'preferredStartDate', p.preferred_start_date,
            'enrollmentType', p.enrollment_type,
            'aftercareRequested', COALESCE((to_jsonb(p)->>'aftercare_requested')::boolean, false),
+           'aftercareOption', to_jsonb(p)->>'aftercare_option',
+           'transportRequested', COALESCE((to_jsonb(p)->>'transport_requested')::boolean, false),
+           'transportRoute', to_jsonb(p)->>'transport_route',
            'previousSchool', p.previous_school,
            'previousSchoolPhone', p.previous_school_phone,
            'referralSource', p.referral_source,

@@ -56,7 +56,7 @@ export default apiHandler<Record<string, unknown>[]>(
         }
         total += product.price_cents * quantity;
       });
-      const reference = `ORD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const reference = `ORD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const order = await client.query<{ id: string }>(
         `INSERT INTO shop_orders
            (tenant_id,parent_account_id,reference,parent_name,branch_id,total_cents)

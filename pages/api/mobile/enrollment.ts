@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { apiHandler } from "@/server/api";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -26,11 +27,11 @@ export default apiHandler<Record<string, unknown>>(
            JOIN application_preferences p ON p.application_id=a.id
            LEFT JOIN branches b ON b.id=p.branch_id
           WHERE a.tenant_id=$1
-            AND (a.parent_account_id=$2 OR lower(a.parent_email::text)=lower($3))
-            AND ($4::text IS NULL OR a.reference=$4)
+            AND a.parent_account_id=$2
+            AND ($3::text IS NULL OR a.reference=$3)
           ORDER BY a.created_at DESC
           LIMIT 1`,
-        [parent.tenantId, parent.id, parent.email, requestedReference || null],
+        [parent.tenantId, parent.id, requestedReference || null],
       );
       if (!current.rows[0]) {
         throw new AppError(404, "APPLICATION_NOT_FOUND", "No submitted application was found for this account.");
@@ -43,15 +44,17 @@ export default apiHandler<Record<string, unknown>>(
       `SELECT a.id,a.child_name,a.child_date_of_birth,a.current_grade,a.status,p.branch_id
        FROM applications a JOIN application_preferences p ON p.application_id=a.id
        WHERE a.id=$1 AND a.tenant_id=$2
-         AND (a.parent_account_id=$3 OR a.parent_email=$4) LIMIT 1`,
-      [input.applicationId, parent.tenantId, parent.id, parent.email],
+         AND a.parent_account_id=$3 LIMIT 1`,
+      [input.applicationId, parent.tenantId, parent.id],
     );
     const item = application.rows[0];
     if (!item) throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found.");
     if (!["PENDING_REVIEW", "APPROVED", "ENROLLED"].includes(String(item.status))) {
       throw new AppError(422, "SUBMIT_FIRST", "Submit the application before enrolment.");
     }
-    const hash = await bcrypt.hash(input.pickupPassword, 12);
+    // The pickup-password feature was removed from the parent experience.
+    // Preserve the legacy non-null database column with an unguessable value.
+    const hash = await bcrypt.hash(crypto.randomUUID(), 12);
     await query(
       `INSERT INTO mobile_enrollments
          (application_id,parent_account_id,pickup_password_hash,primary_collector,secondary_collector)

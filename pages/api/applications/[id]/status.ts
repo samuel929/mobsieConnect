@@ -29,7 +29,7 @@ const statusSchema = z.object({
     privacyAccepted: z.literal(true),
     termsAccepted: z.literal(true),
     enrolmentTermsAccepted: z.literal(true),
-    photoConsent: z.literal(true),
+    photoConsent: z.boolean(),
   }).optional(),
 });
 

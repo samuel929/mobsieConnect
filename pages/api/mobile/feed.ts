@@ -33,21 +33,15 @@ export default apiHandler<Record<string, unknown>>(
              FROM students s JOIN branches b ON b.id=s.branch_id LEFT JOIN applications a ON a.id=s.application_id
              WHERE s.tenant_id=$1
                AND (
-                 a.parent_account_id=$2
-                 OR lower(trim(s.parent_name))=lower(trim($3))
-                 OR lower(trim(COALESCE(a.parent_email, '')))=lower(trim($4))
-                 OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g')=regexp_replace($5, '\\D', '', 'g')
+                 s.parent_account_id=$2
+                 OR a.parent_account_id=$2
                )
-             ORDER BY s.created_at DESC`, [parent.tenantId,parent.id,parent.name,parent.email,parent.phone]),
+             ORDER BY s.created_at DESC`, [parent.tenantId,parent.id]),
       query(`SELECT a.id,a.reference,a.child_name AS "childName",a.current_grade AS "currentGrade",a.status,ap.branch_id AS "branchId",b.name AS "branchName",ap.preferred_start_date::text AS "preferredStartDate"
              FROM applications a LEFT JOIN application_preferences ap ON ap.application_id=a.id LEFT JOIN branches b ON b.id=ap.branch_id
              WHERE a.tenant_id=$1
-               AND (
-                 a.parent_account_id=$2
-                 OR lower(trim(COALESCE(a.parent_email, '')))=lower(trim($3))
-                 OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g')=regexp_replace($4, '\\D', '', 'g')
-               )
-             ORDER BY a.created_at DESC`, [parent.tenantId,parent.id,parent.email,parent.phone]),
+               AND a.parent_account_id=$2
+             ORDER BY a.created_at DESC`, [parent.tenantId,parent.id]),
       query(`SELECT ar.student_id AS "studentId",ar.subject,ar.term,ar.year,
                     ar.score::float AS score,ar.grade,ar.teacher_comment AS "teacherComment"
                FROM academic_records ar
@@ -55,24 +49,20 @@ export default apiHandler<Record<string, unknown>>(
                LEFT JOIN applications a ON a.id=s.application_id
               WHERE ar.tenant_id=$1
                 AND (
-                  a.parent_account_id=$2
-                  OR lower(trim(s.parent_name))=lower(trim($3))
-                  OR lower(trim(COALESCE(a.parent_email, '')))=lower(trim($4))
-                  OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g')=regexp_replace($5, '\\D', '', 'g')
+                  s.parent_account_id=$2
+                  OR a.parent_account_id=$2
                 )
-              ORDER BY ar.year DESC,ar.term DESC,ar.subject ASC`, [parent.tenantId,parent.id,parent.name,parent.email,parent.phone]),
+              ORDER BY ar.year DESC,ar.term DESC,ar.subject ASC`, [parent.tenantId,parent.id]),
       query(`SELECT r.student_id AS "studentId",r.attendance_date::text AS date,r.status
                FROM attendance_registers r
                JOIN students s ON s.id=r.student_id
                LEFT JOIN applications a ON a.id=s.application_id
               WHERE r.tenant_id=$1
                 AND (
-                  a.parent_account_id=$2
-                  OR lower(trim(s.parent_name))=lower(trim($3))
-                  OR lower(trim(COALESCE(a.parent_email, '')))=lower(trim($4))
-                  OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g')=regexp_replace($5, '\\D', '', 'g')
+                  s.parent_account_id=$2
+                  OR a.parent_account_id=$2
                 )
-              ORDER BY r.attendance_date DESC LIMIT 365`, [parent.tenantId,parent.id,parent.name,parent.email,parent.phone]),
+              ORDER BY r.attendance_date DESC LIMIT 365`, [parent.tenantId,parent.id]),
       getParentEvents(parent),
       query(`SELECT n.id,n.title,n.body,n.data,n.created_at::text AS "createdAt",d.read_at::text AS "readAt"
              FROM mobile_notification_deliveries d JOIN mobile_notifications n ON n.id=d.notification_id

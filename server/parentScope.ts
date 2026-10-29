@@ -13,24 +13,17 @@ export async function getParentBranchIds(parent: Pick<ParentSession, "id" | "ten
       WHERE s.tenant_id=$1
         AND s.branch_id IS NOT NULL
         AND (
-          a.parent_account_id=$2
-          OR lower(trim(s.parent_name))=lower(trim($3))
-          OR lower(trim(COALESCE(a.parent_email, '')))=lower(trim($4))
-          OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g') = regexp_replace($5, '\\D', '', 'g')
+          s.parent_account_id=$2
+          OR a.parent_account_id=$2
         )
      UNION
      SELECT DISTINCT p.branch_id AS "branchId"
        FROM applications a
        JOIN application_preferences p ON p.application_id=a.id
       WHERE a.tenant_id=$1
-        AND (
-          a.parent_account_id=$2
-          OR lower(trim(COALESCE(a.parent_name, '')))=lower(trim($3))
-          OR lower(trim(COALESCE(a.parent_email, '')))=lower(trim($4))
-          OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g') = regexp_replace($5, '\\D', '', 'g')
-        )
+        AND a.parent_account_id=$2
         AND p.branch_id IS NOT NULL`,
-    [parent.tenantId, parent.id, parent.name, parent.email, parent.phone],
+    [parent.tenantId, parent.id],
   );
   return result.rows.map((row) => row.branchId);
 }

@@ -1,6 +1,7 @@
 import type { NextApiRequest } from "next";
 import { jwtVerify, SignJWT } from "jose";
 import { AppError } from "./errors";
+import { query } from "./db";
 
 export type ParentSession = {
   id: string;
@@ -62,7 +63,28 @@ export async function getParent(req: Pick<NextApiRequest, "headers">) {
   if (!authorization?.startsWith("Bearer ")) {
     throw new AppError(401, "UNAUTHENTICATED", "Please sign in.");
   }
-  return verifyParentToken(authorization.slice(7));
+  const session = await verifyParentToken(authorization.slice(7));
+  const active = await query<{
+    id: string;
+    tenantId: string;
+    email: string;
+    name: string;
+    phone: string;
+  }>(
+    `SELECT id,tenant_id AS "tenantId",email::text,name,phone
+     FROM parent_accounts
+     WHERE id=$1 AND tenant_id=$2 AND is_active=true
+     LIMIT 1`,
+    [session.id, session.tenantId],
+  );
+  if (!active.rows[0]) {
+    throw new AppError(
+      401,
+      "PARENT_ACCOUNT_REMOVED",
+      "This parent account is no longer active. Please contact the school if this is unexpected.",
+    );
+  }
+  return active.rows[0];
 }
 
 export async function getOptionalParent(req: Pick<NextApiRequest, "headers">) {

@@ -34,6 +34,19 @@ describe("API validation", () => {
     ).toThrow();
   });
 
+  it("accepts an explicit no for optional photo consent", () => {
+    expect(
+      consentSchema.parse({
+        informationAccurate: true,
+        privacyAccepted: true,
+        termsAccepted: true,
+        enrolmentTermsAccepted: true,
+        photoConsent: false,
+        submit: true,
+      }),
+    ).toMatchObject({ photoConsent: false });
+  });
+
   it("requires a strong parent account password and tenant", () => {
     expect(() =>
       parentSignupSchema.parse({

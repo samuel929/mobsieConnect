@@ -151,6 +151,13 @@
     host.querySelectorAll('.pg[data-page]').forEach(b=>b.addEventListener('click',()=>{
       const p=+b.dataset.page; if(p>=1&&p<=pages){state.page=p;if(state.remoteModel)fetchRemoteTable(id);else renderTable(id);}
     }));
+    if(cfg.onAction) host.querySelectorAll('[data-table-action]').forEach(button=>button.addEventListener('click',event=>{
+      event.preventDefault();event.stopPropagation();
+      const tr=button.closest('tr[data-row]');
+      if(!tr)return;
+      const row=rows[+tr.dataset.row];
+      if(row)cfg.onAction(button.dataset.tableAction,row,button);
+    }));
     if(cfg.onRow) host.querySelectorAll('tr.clickable').forEach(tr=>tr.addEventListener('click',e=>{
       if(e.target.closest('button')) return;
       cfg.onRow(rows[+tr.dataset.row]);

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
-import { apiHandler, one, pageLimit } from "@/server/api";
+import { apiHandler, one } from "@/server/api";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { adminParentSchema } from "@/server/validation";
@@ -39,15 +39,15 @@ export default apiHandler<ParentRow[]>(
     const result = await query<ParentRow>(
       `SELECT p.id,p.email::text,p.name,p.phone,p.preferred_branch_id AS "branchId",
          b.name AS "branchName",p.is_active AS "isActive",
-         count(s.id)::int AS children,p.created_at::text AS "createdAt"
+         (SELECT count(*)::int FROM students s WHERE s.parent_account_id=p.id) AS children,
+         (SELECT count(*)::int FROM applications a WHERE a.parent_account_id=p.id) AS applications,
+         p.last_login_at::text AS "lastLoginAt",p.created_at::text AS "createdAt"
        FROM parent_accounts p
        LEFT JOIN branches b ON b.id=p.preferred_branch_id
-       LEFT JOIN students s ON s.parent_account_id=p.id
-       WHERE p.tenant_id=$1 AND p.is_active=true
+       WHERE p.tenant_id=$1
          AND ($2='' OR p.name ILIKE '%'||$2||'%' OR p.email::text ILIKE '%'||$2||'%')
-       GROUP BY p.id,b.name
-       ORDER BY p.created_at DESC,p.id DESC LIMIT $3`,
-      [user!.tenantId, search, pageLimit(req.query.limit, 500)],
+       ORDER BY p.created_at DESC,p.id DESC`,
+      [user!.tenantId, search],
     );
     res.status(200).json({ ok: true, data: result.rows });
   },

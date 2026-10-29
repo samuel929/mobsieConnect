@@ -56,7 +56,9 @@ export function apiHandler<T>(
       if (options.rateLimit !== false) await enforceRateLimit(req);
       const user = options.auth === false ? null : await getRequestUser(req);
       if (user && options.roles) requireRole(user, options.roles);
-      if (user && !["GET", "HEAD"].includes(req.method)) await assertCurrentSession(user);
+      // Validate every authenticated request so a suspended or deleted account
+      // loses access immediately, including to read-only endpoints.
+      if (user) await assertCurrentSession(user);
       await handler(req, res, { user, requestId });
     } catch (error) {
       const appError = normalizeError(error);

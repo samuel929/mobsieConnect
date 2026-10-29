@@ -48,11 +48,8 @@ export default apiHandler<{ user: ParentUser; token?: string }>(
              parent_account_id=COALESCE(parent_account_id,$4),
              updated_at=now()
          WHERE tenant_id=$5
-           AND (
-             parent_account_id=$4 OR
-             lower(trim(parent_email::text))=lower(trim($6))
-           )`,
-        [input.name, input.email, input.phone, parent.id, parent.tenantId, parent.email],
+           AND parent_account_id=$4`,
+        [input.name, input.email, input.phone, parent.id, parent.tenantId],
       );
 
       await client.query(

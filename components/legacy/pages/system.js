@@ -139,6 +139,35 @@ window.Pages=window.Pages||{};
             DB.log((u.status==='Suspended'?'Suspended user':'Restored user'),u.email,'warn');
             UI.toast(u.name+(u.status==='Suspended'?' suspended':' restored'));App.refresh();
           }},
+          '-',
+          {icon:'delete',label:'Remove user',danger:true,onClick:()=>UI.modal({
+            title:'Remove user permanently',
+            body:`<div class="user-editor">
+              <section class="user-editor__section">
+                <div class="user-editor__section-title">This action cannot be undone</div>
+                <p class="muted">Removing <b>${esc(u.name)}</b> (${esc(u.email)}) deletes their Control Centre account and immediately revokes access. Historical records they created remain available without an assigned author.</p>
+                <div class="field" style="margin-top:16px"><label>Type the user’s email to confirm</label><input type="email" data-confirm-email autocomplete="off" placeholder="${esc(u.email)}"></div>
+              </section>
+            </div>`,
+            foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" data-s disabled>${MCIcon('delete')} Remove user</button>`,
+            mount(r,close){
+              const input=r.querySelector('[data-confirm-email]');
+              const remove=r.querySelector('[data-s]');
+              input.addEventListener('input',()=>{remove.disabled=input.value.trim().toLowerCase()!==u.email.toLowerCase();});
+              r.querySelector('[data-x]').addEventListener('click',close);
+              remove.addEventListener('click',async()=>{
+                remove.disabled=true;remove.textContent='Removing…';
+                try{
+                  await MobsieApi.mutate('/api/users/'+encodeURIComponent(u.id),{method:'DELETE'});
+                  DB.adminUsers=DB.adminUsers.filter(account=>account.id!==u.id);
+                  const role=DB.rolePerms.roles.find(item=>item.name===u.role);
+                  if(role)role.users=Math.max(0,Number(role.users||0)-1);
+                  DB.log('Deleted user account',u.email,'warn');
+                  close();UI.toast(`${u.name} was removed permanently.`);App.refresh();
+                }catch(error){remove.disabled=false;remove.innerHTML=`${MCIcon('delete')} Remove user`;UI.toast(error.message||'Could not remove user','alert');}
+              });
+            }
+          })},
         ],{align:'right'});
       });
       root.querySelector('#invUser').addEventListener('click',()=>UI.modal({

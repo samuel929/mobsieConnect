@@ -19,12 +19,12 @@ export async function withParentApplicationState(parent: ParentSession): Promise
             EXISTS(SELECT 1 FROM mobile_enrollments me WHERE me.application_id=a.id) AS "enrollmentComplete"
        FROM applications a
       WHERE a.tenant_id=$1
-        AND (a.parent_account_id=$2 OR lower(a.parent_email::text)=lower($3))
+        AND a.parent_account_id=$2
       ORDER BY
         CASE WHEN a.status IN ('APPROVED','ENROLLED') THEN 0 ELSE 1 END,
         a.created_at DESC
       LIMIT 1`,
-    [parent.tenantId, parent.id, parent.email],
+    [parent.tenantId, parent.id],
   );
   const application = result.rows[0];
   const accessState: ParentAccessState = !application

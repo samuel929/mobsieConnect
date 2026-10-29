@@ -14,9 +14,6 @@ export default apiHandler<{ requestId: string; studentName: string; removalDate:
     const removalDate = `${lastDay.getUTCFullYear()}-12-31`;
 
     const data = await withTransaction(async (client) => {
-      // Older enrolments may not have application.parent_account_id populated.
-      // Keep ownership checking secure, but recognise the same parent email and
-      // normalised phone number fallbacks used by the mobile feed.
       const learner = await client.query<{ id: string; name: string; branchId: string | null; branchName: string | null }>(
         `SELECT s.id, s.name, s.branch_id AS "branchId", b.name AS "branchName"
            FROM students s
@@ -25,12 +22,11 @@ export default apiHandler<{ requestId: string; studentName: string; removalDate:
           WHERE s.id = $1
             AND s.tenant_id = $2
             AND (
+              s.parent_account_id = $3
+              OR
               a.parent_account_id = $3
-              OR lower(trim(s.parent_name)) = lower(trim($4))
-              OR lower(trim(COALESCE(a.parent_email, ''))) = lower(trim($5))
-              OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g') = regexp_replace($6, '\\D', '', 'g')
             )`,
-        [input.studentId, parent.tenantId, parent.id, parent.name, parent.email, parent.phone],
+        [input.studentId, parent.tenantId, parent.id],
       );
       if (!learner.rows[0]) throw new AppError(404, "LEARNER_NOT_FOUND", "That learner is not available for this account.");
       await client.query(

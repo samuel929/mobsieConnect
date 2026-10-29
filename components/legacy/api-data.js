@@ -153,8 +153,10 @@
         branch: parent.branchName || 'Not assigned',
         branchId: parent.branchId || '',
         children: Number(parent.children || 0),
+        applications: Number(parent.applications || 0),
         balance: 0,
         status: parent.isActive === false ? 'Inactive' : 'Active',
+        lastLogin: parent.lastLoginAt ? new Date(parent.lastLoginAt).toLocaleString('en-ZA') : 'Never',
         joined: parent.createdAt ? new Date(parent.createdAt).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' }) : '',
       }));
     }

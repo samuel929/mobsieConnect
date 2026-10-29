@@ -180,6 +180,11 @@ export const applicationSchema = z
     parentEmail: z.email().max(254),
     parentPhone: phone,
     relationship: z.enum(["Mother", "Father", "Guardian", "Other"]),
+    additionalGuardianEnabled: z.boolean().default(false),
+    additionalGuardianName: z.string().trim().max(120).optional().or(z.literal("")),
+    additionalGuardianRelationship: z.enum(["Mother", "Father", "Guardian"]).optional().or(z.literal("")),
+    additionalGuardianEmail: z.email().max(254).optional().or(z.literal("")),
+    additionalGuardianPhone: phone.optional().or(z.literal("")),
     childName: z.string().trim().min(2).max(120),
     childIdNumber: z
       .string()
@@ -192,6 +197,12 @@ export const applicationSchema = z
     disabilityDetails: z.string().trim().max(2000).optional(),
   })
   .superRefine((input, context) => {
+    if (input.additionalGuardianEnabled) {
+      if (!input.additionalGuardianName) context.addIssue({ code: "custom", path: ["additionalGuardianName"], message: "Additional guardian name is required" });
+      if (!input.additionalGuardianRelationship) context.addIssue({ code: "custom", path: ["additionalGuardianRelationship"], message: "Additional guardian relationship is required" });
+      if (!input.additionalGuardianEmail) context.addIssue({ code: "custom", path: ["additionalGuardianEmail"], message: "Additional guardian email is required" });
+      if (!input.additionalGuardianPhone) context.addIssue({ code: "custom", path: ["additionalGuardianPhone"], message: "Additional guardian phone is required" });
+    }
     if (!validSouthAfricanId(input.childIdNumber)) {
       context.addIssue({
         code: "custom",
@@ -233,8 +244,11 @@ export const preferencesSchema = z.object({
   preferredStartDate: z.iso.date(),
   enrollmentType: z.enum(["FULL_TIME", "PART_TIME"]),
   aftercareRequested: z.boolean().default(false),
-  previousSchool: z.string().trim().min(2).max(160),
-  previousSchoolPhone: phone,
+  aftercareOption: z.enum(["AD_HOC", "FULL_TIME", "PRIMARY_SCHOOL"]).optional().or(z.literal("")),
+  transportRequested: z.boolean().default(false),
+  transportRoute: z.string().trim().max(160).optional().or(z.literal("")),
+  previousSchool: z.string().trim().max(160).optional().or(z.literal("")),
+  previousSchoolPhone: phone.optional().or(z.literal("")),
   referralSource: z.enum([
     "SOCIAL_MEDIA",
     "WORD_OF_MOUTH",
@@ -253,6 +267,10 @@ export const preferencesSchema = z.object({
   feePayerFirstName: optionalPersonName,
   feePayerLastName: optionalPersonName,
   feePayerTermsAccepted: z.boolean().default(false),
+}).superRefine((input, context) => {
+  if (input.aftercareRequested && !input.aftercareOption) {
+    context.addIssue({ code: "custom", path: ["aftercareOption"], message: "Select an aftercare option" });
+  }
 });
 
 export const consentSchema = z.object({
@@ -260,7 +278,7 @@ export const consentSchema = z.object({
   privacyAccepted: z.literal(true),
   termsAccepted: z.literal(true),
   enrolmentTermsAccepted: z.literal(true),
-  photoConsent: z.literal(true),
+  photoConsent: z.boolean(),
   submit: z.boolean().default(false),
 });
 
@@ -269,6 +287,7 @@ export const documentSchema = z.object({
     "LEARNER_PHOTO",
     "BIRTH_CERTIFICATE",
     "PARENT_ID",
+    "PARENT_ID_SECONDARY",
     "MEDICAL_AID",
     "CLINIC_CARD",
     "PROOF_OF_INCOME",
@@ -355,7 +374,6 @@ export const stockAdjustmentSchema = z.object({
  */
 export const mobileEnrollmentSchema = z.object({
   applicationId: z.uuid(),
-  pickupPassword: z.string().trim().min(4).max(128),
   primaryCollector: z.string().trim().min(2).max(120),
   secondaryCollector: z
     .string()

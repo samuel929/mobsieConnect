@@ -34,10 +34,8 @@ export async function getParentDailyActivities(
        LEFT JOIN applications a ON a.id = s.application_id
        WHERE s.tenant_id = $1
          AND (
-           a.parent_account_id = $2
-           OR lower(trim(s.parent_name)) = lower(trim($3))
-           OR lower(trim(COALESCE(a.parent_email, ''))) = lower(trim($4))
-           OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g') = regexp_replace($5, '\\D', '', 'g')
+           s.parent_account_id = $2
+           OR a.parent_account_id = $2
          )
 
        UNION
@@ -48,12 +46,7 @@ export async function getParentDailyActivities(
        FROM applications a
        JOIN application_preferences p ON p.application_id = a.id
        WHERE a.tenant_id = $1
-         AND (
-           a.parent_account_id = $2
-           OR lower(trim(COALESCE(a.parent_name, ''))) = lower(trim($3))
-           OR lower(trim(COALESCE(a.parent_email, ''))) = lower(trim($4))
-           OR regexp_replace(COALESCE(a.parent_phone, ''), '\\D', '', 'g') = regexp_replace($5, '\\D', '', 'g')
-         )
+         AND a.parent_account_id = $2
          AND p.branch_id IS NOT NULL
      ), visible_activities AS (
        SELECT
@@ -96,7 +89,7 @@ export async function getParentDailyActivities(
      WHERE "activityDate"::date = (SELECT activity_date FROM selected_day)
        AND class_rank = (SELECT class_rank FROM selected_rank)
      ORDER BY "startTime" ASC, title ASC`,
-    [parent.tenantId, parent.id, parent.name, parent.email, parent.phone],
+    [parent.tenantId, parent.id],
   );
 
   return result.rows;
