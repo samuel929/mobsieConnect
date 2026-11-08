@@ -13,8 +13,20 @@ type Message = {
 };
 
 /** Parent conversation history. It is tenant-scoped in SQL, never by client input. */
-export default apiHandler<Message[] | Message>({ methods: ["GET", "POST"], auth: false }, async (req, res) => {
+export default apiHandler<Message[] | Message | { markedRead: number }>({ methods: ["GET", "POST", "PATCH"], auth: false }, async (req, res) => {
   const parent = await getParent(req);
+  if (req.method === "PATCH") {
+    const marked = await query<{ id: string }>(
+      `UPDATE parent_messages
+          SET read_at=now()
+        WHERE tenant_id=$1 AND parent_account_id=$2
+          AND sender_type='SCHOOL' AND read_at IS NULL
+      RETURNING id`,
+      [parent.tenantId, parent.id],
+    );
+    res.status(200).json({ ok: true, data: { markedRead: marked.rowCount ?? 0 } });
+    return;
+  }
   if (req.method === "POST") {
     const input = mobileMessageSchema.parse(req.body);
     const saved = await query<Message>(

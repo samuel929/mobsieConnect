@@ -8,8 +8,8 @@ const contentSchema=z.object({
   heroTitle:z.string().trim().min(2).max(180),intro:z.string().trim().min(2).max(3000),
   featureTitle:z.string().trim().max(180).optional().default(""),featureCopy:z.string().trim().max(5000).optional().default(""),
   ctaText:z.string().trim().max(80).optional().default(""),ctaLink:z.string().url().max(2000).optional().or(z.literal("")),
-  headerImageUrl:z.string().url().max(2000).optional().or(z.literal("")),featureImageUrl:z.string().url().max(2000).optional().or(z.literal("")),
-  headerImagePublicId:z.string().trim().max(500).optional().default(""),featureImagePublicId:z.string().trim().max(500).optional().default(""),
+  headerImageUrl:z.string().url().max(2000).optional().or(z.literal("")),featureImageUrl:z.string().url().max(2000).optional().or(z.literal("")),footerImageUrl:z.string().url().max(2000).optional().or(z.literal("")),
+  headerImagePublicId:z.string().trim().max(500).optional().default(""),featureImagePublicId:z.string().trim().max(500).optional().default(""),footerImagePublicId:z.string().trim().max(500).optional().default(""),
   footer:z.string().trim().max(1000).optional().default(""),
 });
 const schema=z.object({title:z.string().trim().min(2).max(160),body:z.string().trim().min(2).max(10000),audience:z.string().trim().default("All campuses"),status:z.enum(["DRAFT","SENT"]).default("SENT"),content:contentSchema});

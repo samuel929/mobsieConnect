@@ -327,7 +327,7 @@
         id:product.id,name:product.name,cat:product.category,price:Number(product.price),
         stock:product.stock,sold:product.sold,
         status:product.status==='HIDDEN'?'Hidden':product.status==='OUT_OF_STOCK'?'Out of Stock':product.stock<20?'Low Stock':'Active',
-        imageUrl:product.imageUrl,hue:hues[index%hues.length],
+        imageUrl:product.imageUrl,colors:product.colors||[],hue:hues[index%hues.length],
       }));
     }
     if (orders?.length) {

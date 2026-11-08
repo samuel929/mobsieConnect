@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { apiHandler, pageLimit } from "@/server/api";
 import { query } from "@/server/db";
+import { createAndSendNotification } from "@/server/expoPush";
 import { publishRealtime } from "@/server/realtime";
 
 const replySchema = z.object({
@@ -23,6 +24,7 @@ type MessageRow = {
 
 type ParentRow = {
   id: string;
+  name: string;
 };
 
 export default apiHandler<MessageRow[]>(
@@ -49,7 +51,7 @@ export default apiHandler<MessageRow[]>(
        */
       const parent = await query<ParentRow>(
         `
-          SELECT id
+          SELECT id, COALESCE(NULLIF(TRIM(name), ''), email::text, 'Parent') AS name
           FROM parent_accounts
           WHERE id = $1
             AND tenant_id = $2
@@ -110,6 +112,27 @@ export default apiHandler<MessageRow[]>(
       );
 
       publishRealtime("messages", user!.tenantId, input.parentAccountId);
+
+      // The message is already safely stored at this point. A temporary push
+      // provider outage must not make the dashboard resend and duplicate it.
+      try {
+        const message = result.rows[0];
+        await createAndSendNotification({
+          tenantId: user!.tenantId,
+          parentAccountId: input.parentAccountId,
+          title: `New message from ${user!.name || "Mobsie Kids"}`,
+          body: input.body.length > 140 ? `${input.body.slice(0, 137)}...` : input.body,
+          audience: parent.rows[0].name,
+          sourceType: "PARENT_MESSAGE",
+          sourceId: message.id,
+          data: {
+            screen: "Messages",
+            messageId: message.id,
+          },
+        });
+      } catch (pushError) {
+        console.error("Failed to send parent message push notification", pushError);
+      }
 
       res.status(201).json({
         ok: true,

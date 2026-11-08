@@ -56,6 +56,7 @@ window.Pages=window.Pages||{};
                 <div class="field"><label>Price (R)</label><input type="number" data-f="price" value="${p.price}"></div>
                 <div class="field"><label>Category</label><select data-f="cat">${['Uniform','Stationery','Accessories','Books'].map(c=>`<option ${p.cat===c?'selected':''}>${c}</option>`).join('')}</select></div>
               </div>
+              <div class="field"><label>Available colours (comma separated)</label><input type="text" data-f="colors" value="${esc((p.colors||[]).join(', '))}" placeholder="e.g. Red, Blue, Green"></div>
               <div class="field"><label>Replace image (optional)</label><label class="file-picker">${MCIcon('upload')}<strong>Choose product image</strong><span data-file-name>PNG or JPG</span><input type="file" data-f="image" accept="image/png,image/jpeg"></label></div>`,
             foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Save</button>`,
             mount(r,close){
@@ -69,10 +70,11 @@ window.Pages=window.Pages||{};
                   const imageData=file?await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file);}):undefined;
                   const response=await MobsieApi.mutate('/api/shop/products',{method:'PUT',body:JSON.stringify({
                     id:p.id,name:v.name||p.name,category:v.cat,price:+v.price,stock:p.stock,
-                    status:p.status==='Hidden'?'HIDDEN':p.stock===0?'OUT_OF_STOCK':'ACTIVE',imageData
+                    status:p.status==='Hidden'?'HIDDEN':p.stock===0?'OUT_OF_STOCK':'ACTIVE',
+                    colors:String(v.colors||'').split(',').map(c=>c.trim()).filter(Boolean),imageData
                   })});
                   const saved=response.data[0];
-                  Object.assign(p,{name:saved.name,price:Number(saved.price),cat:saved.category,stock:saved.stock,imageUrl:saved.imageUrl,status:saved.status==='HIDDEN'?'Hidden':saved.status==='OUT_OF_STOCK'?'Out of Stock':saved.stock<20?'Low Stock':'Active'});
+                  Object.assign(p,{name:saved.name,price:Number(saved.price),cat:saved.category,stock:saved.stock,colors:saved.colors||[],imageUrl:saved.imageUrl,status:saved.status==='HIDDEN'?'Hidden':saved.status==='OUT_OF_STOCK'?'Out of Stock':saved.stock<20?'Low Stock':'Active'});
                   close();UI.toast('Product updated in Neon');App.refresh();
                 }catch(error){UI.toast(error.message,'alert');}
               });
@@ -83,7 +85,7 @@ window.Pages=window.Pages||{};
             const next=p.status==='Hidden'?(p.stock===0?'OUT_OF_STOCK':'ACTIVE'):'HIDDEN';
             try{
               await MobsieApi.mutate('/api/shop/products',{method:'PUT',body:JSON.stringify({
-                id:p.id,name:p.name,category:p.cat,price:p.price,stock:p.stock,status:next
+                id:p.id,name:p.name,category:p.cat,price:p.price,stock:p.stock,status:next,colors:p.colors||[]
               })});
               p.status=next==='HIDDEN'?'Hidden':p.stock===0?'Out of Stock':p.stock<20?'Low Stock':'Active';
               UI.toast(p.status==='Hidden'?p.name+' hidden from the shop':p.name+' is live again');
@@ -110,6 +112,7 @@ window.Pages=window.Pages||{};
           <div class="form-row">
             <div class="field"><label>Price (R)</label><input type="number" data-f="price" placeholder="0.00"></div>
             <div class="field"><label>Initial stock</label><input type="number" data-f="stock" placeholder="0"></div></div>
+          <div class="field"><label>Available colours (comma separated)</label><input type="text" data-f="colors" placeholder="e.g. Red, Blue, Green"></div>
           <div class="field"><label>Available in</label><select data-f="avail"><option>All campus shops</option><option>Selected campuses</option></select></div>
           <div class="field"><label>Product image</label><label class="file-picker">${MCIcon('upload')}<strong>Choose product image</strong><span data-file-name>PNG or JPG, up to 5 MB</span><input type="file" data-f="image" accept="image/png,image/jpeg"></label></div>`,
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Add Product</button>`,
@@ -127,10 +130,11 @@ window.Pages=window.Pages||{};
               if(file&&file.size>5*1024*1024){UI.toast('Product image must be smaller than 5 MB','alert');return;}
               const imageData=file?await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file);}):undefined;
               const response=await MobsieApi.mutate('/api/shop/products',{method:'POST',body:JSON.stringify({
-                name:v.name,category:v.cat,price:+v.price,stock,status:stock===0?'OUT_OF_STOCK':'ACTIVE',imageData
+                name:v.name,category:v.cat,price:+v.price,stock,status:stock===0?'OUT_OF_STOCK':'ACTIVE',
+                colors:String(v.colors||'').split(',').map(c=>c.trim()).filter(Boolean),imageData
               })});
               const saved=response.data[0];
-              DB.products.unshift({id:saved.id,name:saved.name,cat:saved.category,price:Number(saved.price),stock:saved.stock,sold:saved.sold,
+              DB.products.unshift({id:saved.id,name:saved.name,cat:saved.category,price:Number(saved.price),stock:saved.stock,sold:saved.sold,colors:saved.colors||[],
                 status:saved.status==='OUT_OF_STOCK'?'Out of Stock':saved.stock<20?'Low Stock':'Active',imageUrl:saved.imageUrl,hue:hues[v.name.length%hues.length]});
               DB.log('Added product',v.name,'ok');
               close();UI.toast(v.name+' saved to Neon and published');App.refresh();

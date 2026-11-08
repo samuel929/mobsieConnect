@@ -10,7 +10,7 @@ export const config = { api: { bodyParser: { sizeLimit: "14mb" } } };
 
 type ProductRow = {
   id: string; name: string; category: string; price: number; stock: number; sold: number;
-  status: string; imageUrl: string | null; totalCount?: string;
+  status: string; imageUrl: string | null; colors: string[]; totalCount?: string;
 };
 
 export default apiHandler<ProductRow[]>(
@@ -28,7 +28,7 @@ export default apiHandler<ProductRow[]>(
       const limit = pageLimit(req.query.limit, 100);
       const search = (one(req.query.search) ?? "").trim();
       const result = await query<ProductRow>(
-        `SELECT id, name, category, price_cents / 100.0 AS price, stock, sold, status,
+        `SELECT id, name, category, price_cents / 100.0 AS price, stock, sold, status, colors,
            image_url AS "imageUrl", count(*) OVER()::text AS "totalCount"
          FROM shop_products WHERE tenant_id = $1 AND deleted_at IS NULL
            AND ($2 = '' OR name ILIKE $2 OR category ILIKE $2)
@@ -59,18 +59,18 @@ export default apiHandler<ProductRow[]>(
     const status = input.stock === 0 ? "OUT_OF_STOCK" : input.status;
     const result = input.id
       ? await query<ProductRow>(
-          `UPDATE shop_products SET name=$3, category=$4, price_cents=$5, stock=$6, status=$7,
-             image_url=COALESCE($8,image_url), image_public_id=COALESCE($9,image_public_id), updated_at=now()
+          `UPDATE shop_products SET name=$3, category=$4, price_cents=$5, stock=$6, status=$7,colors=$8,
+             image_url=COALESCE($9,image_url), image_public_id=COALESCE($10,image_public_id), updated_at=now()
            WHERE id=$1 AND tenant_id=$2
-           RETURNING id,name,category,price_cents/100.0 AS price,stock,sold,status,image_url AS "imageUrl"`,
-          [input.id, tenantId, input.name, input.category, Math.round(input.price * 100), input.stock, status, upload?.url ?? null, upload?.publicId ?? null],
+           RETURNING id,name,category,price_cents/100.0 AS price,stock,sold,status,colors,image_url AS "imageUrl"`,
+          [input.id, tenantId, input.name, input.category, Math.round(input.price * 100), input.stock, status, input.colors, upload?.url ?? null, upload?.publicId ?? null],
         )
       : await query<ProductRow>(
           `INSERT INTO shop_products
-             (tenant_id,name,category,price_cents,stock,status,image_url,image_public_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-           RETURNING id,name,category,price_cents/100.0 AS price,stock,sold,status,image_url AS "imageUrl"`,
-          [tenantId, input.name, input.category, Math.round(input.price * 100), input.stock, status, upload?.url ?? null, upload?.publicId ?? null],
+             (tenant_id,name,category,price_cents,stock,status,colors,image_url,image_public_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           RETURNING id,name,category,price_cents/100.0 AS price,stock,sold,status,colors,image_url AS "imageUrl"`,
+          [tenantId, input.name, input.category, Math.round(input.price * 100), input.stock, status, input.colors, upload?.url ?? null, upload?.publicId ?? null],
         );
     res.status(input.id ? 200 : 201).json({ ok: true, data: result.rows });
   },

@@ -3,12 +3,13 @@ import { query } from "./db";
 type Token = { token: string };
 type Ticket = { status: "ok" | "error"; details?: { error?: string } };
 
-export async function sendExpoPush(input: { tenantId:string; branchId?:string|null; title:string; body:string; data?:Record<string,unknown> }) {
+export async function sendExpoPush(input: { tenantId:string; branchId?:string|null; parentAccountId?:string|null; title:string; body:string; data?:Record<string,unknown> }) {
   const tokens=await query<Token>(`SELECT t.expo_push_token AS token FROM mobile_push_tokens t
     JOIN parent_accounts p ON p.id=t.parent_account_id
     WHERE t.tenant_id=$1 AND t.is_active=true AND p.is_active=true
+      AND ($3::uuid IS NULL OR t.parent_account_id=$3)
       AND ($2::uuid IS NULL OR p.preferred_branch_id=$2 OR EXISTS(
-        SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$2))`,[input.tenantId,input.branchId??null]);
+        SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$2))`,[input.tenantId,input.branchId??null,input.parentAccountId??null]);
   let sent=0,failed=0;
   for(let i=0;i<tokens.rows.length;i+=100){
     const batch=tokens.rows.slice(i,i+100);
@@ -32,7 +33,7 @@ export async function sendExpoPush(input: { tenantId:string; branchId?:string|nu
   return {sent,failed};
 }
 
-export async function createAndSendNotification(input:{tenantId:string;branchId?:string|null;title:string;body:string;audience?:string;data?:Record<string,unknown>;sourceType?:string;sourceId?:string;scheduledAt?:string|null}){
+export async function createAndSendNotification(input:{tenantId:string;branchId?:string|null;parentAccountId?:string|null;title:string;body:string;audience?:string;data?:Record<string,unknown>;sourceType?:string;sourceId?:string;scheduledAt?:string|null}){
   const scheduled=input.scheduledAt&&new Date(input.scheduledAt)>new Date();
   const row=await query<{id:string}>(`INSERT INTO mobile_notifications
     (tenant_id,branch_id,title,body,audience,data,scheduled_at,status,source_type,source_id)
@@ -45,11 +46,12 @@ export async function createAndSendNotification(input:{tenantId:string;branchId?
      WHERE p.tenant_id=$2 AND p.is_active=true
        AND ($3::uuid IS NULL OR p.preferred_branch_id=$3 OR EXISTS(
          SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3))
+       AND ($4::uuid IS NULL OR p.id=$4)
        AND NOT EXISTS (
          SELECT 1 FROM mobile_notification_deliveries d
          WHERE d.notification_id=$1 AND d.parent_account_id=p.id)
      ON CONFLICT DO NOTHING`,
-    [row.rows[0].id,input.tenantId,input.branchId??null],
+    [row.rows[0].id,input.tenantId,input.branchId??null,input.parentAccountId??null],
   );
   if(scheduled) return {id:row.rows[0].id,sent:0,failed:0,scheduled:true};
   const delivery=await sendExpoPush(input);

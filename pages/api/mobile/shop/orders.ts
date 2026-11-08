@@ -15,7 +15,7 @@ export default apiHandler<Record<string, unknown>[]>(
            o.created_at::text AS "createdAt",b.name AS "branchName",
            COALESCE(json_agg(json_build_object(
              'productId',i.product_id,'name',i.product_name,'quantity',i.quantity,
-             'unitPriceInCents',i.unit_price_cents
+             'unitPriceInCents',i.unit_price_cents,'selectedColor',i.selected_color
            ) ORDER BY i.id) FILTER (WHERE i.id IS NOT NULL),'[]') AS items
          FROM shop_orders o LEFT JOIN branches b ON b.id=o.branch_id
          LEFT JOIN shop_order_items i ON i.order_id=o.id
@@ -40,8 +40,8 @@ export default apiHandler<Record<string, unknown>[]>(
         );
         if (!branch.rows[0]) throw new AppError(422, "BRANCH_NOT_FOUND", "Select a current collection branch.");
       }
-      const products = await client.query<{ id: string; name: string; price_cents: number; stock: number }>(
-        `SELECT id,name,price_cents,stock FROM shop_products
+      const products = await client.query<{ id: string; name: string; price_cents: number; stock: number; colors: string[] }>(
+        `SELECT id,name,price_cents,stock,colors FROM shop_products
          WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='ACTIVE' AND deleted_at IS NULL
          ORDER BY id FOR UPDATE`,
         [parent.tenantId, productIds],
@@ -57,6 +57,12 @@ export default apiHandler<Record<string, unknown>[]>(
         }
         total += product.price_cents * quantity;
       });
+      input.items.forEach((item) => {
+        const product = products.rows.find((candidate) => candidate.id === item.productId)!;
+        if (product.colors.length && (!item.selectedColor || !product.colors.includes(item.selectedColor))) {
+          throw new AppError(422, "PRODUCT_COLOR_REQUIRED", `Select an available colour for ${product.name}.`);
+        }
+      });
       const reference = `ORD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const order = await client.query<{ id: string }>(
         `INSERT INTO shop_orders
@@ -64,14 +70,17 @@ export default apiHandler<Record<string, unknown>[]>(
          VALUES ($1,$2,$3,$4,$5,$6,'AWAITING_PAYMENT') RETURNING id`,
         [parent.tenantId, parent.id, reference, parent.name, input.branchId ?? null, total],
       );
-      for (const product of products.rows) {
-        const quantity = quantities.get(product.id)!;
+      for (const item of input.items) {
+        const product = products.rows.find((candidate) => candidate.id === item.productId)!;
         await client.query(
           `INSERT INTO shop_order_items
-             (order_id,product_id,product_name,quantity,unit_price_cents)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [order.rows[0].id, product.id, product.name, quantity, product.price_cents],
+             (order_id,product_id,product_name,quantity,unit_price_cents,selected_color)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [order.rows[0].id, product.id, product.name, item.quantity, product.price_cents, item.selectedColor ?? null],
         );
+      }
+      for (const product of products.rows) {
+        const quantity = quantities.get(product.id)!;
         await client.query(
           `UPDATE shop_products SET stock=stock-$3,sold=sold+$3,
              status=CASE WHEN stock-$3=0 THEN 'OUT_OF_STOCK' ELSE status END,updated_at=now()
@@ -100,6 +109,7 @@ export default apiHandler<Record<string, unknown>[]>(
           reference,
           totalInCents: total,
           status: "AWAITING_PAYMENT",
+          createdAt: new Date().toISOString(),
           checkoutUrl: `${config.appUrl}/api/payfast/checkout/?shopPayment=${payment.rows[0].id}`,
         }],
       });
