@@ -3,6 +3,7 @@ import { getPool, query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { getParent } from "@/server/parentAuth";
 import { mobileOrderSchema } from "@/server/validation";
+import { payFastConfig } from "@/server/payfast";
 
 export default apiHandler<Record<string, unknown>[]>(
   { methods: ["GET", "POST"], auth: false },
@@ -41,7 +42,7 @@ export default apiHandler<Record<string, unknown>[]>(
       }
       const products = await client.query<{ id: string; name: string; price_cents: number; stock: number }>(
         `SELECT id,name,price_cents,stock FROM shop_products
-         WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='ACTIVE'
+         WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='ACTIVE' AND deleted_at IS NULL
          ORDER BY id FOR UPDATE`,
         [parent.tenantId, productIds],
       );
@@ -59,8 +60,8 @@ export default apiHandler<Record<string, unknown>[]>(
       const reference = `ORD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const order = await client.query<{ id: string }>(
         `INSERT INTO shop_orders
-           (tenant_id,parent_account_id,reference,parent_name,branch_id,total_cents)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+           (tenant_id,parent_account_id,reference,parent_name,branch_id,total_cents,status)
+         VALUES ($1,$2,$3,$4,$5,$6,'AWAITING_PAYMENT') RETURNING id`,
         [parent.tenantId, parent.id, reference, parent.name, input.branchId ?? null, total],
       );
       for (const product of products.rows) {
@@ -78,10 +79,29 @@ export default apiHandler<Record<string, unknown>[]>(
           [product.id, parent.tenantId, quantity],
         );
       }
+      const merchantPaymentId = `${reference}-${crypto.randomUUID().slice(0, 8)}`;
+      const requestedReturnUrl =
+        typeof req.body?.returnUrl === "string" ? req.body.returnUrl.trim() : "";
+      const returnUrl = /^(mobsieconnect|exp|exps):\/\//i.test(requestedReturnUrl)
+        ? requestedReturnUrl
+        : "mobsieconnect://shop/payment/return";
+      const payment = await client.query<{ id: string }>(
+        `INSERT INTO shop_order_payments
+           (order_id,merchant_payment_id,amount_cents,status,return_url)
+         VALUES ($1,$2,$3,'CREATED',$4) RETURNING id`,
+        [order.rows[0].id, merchantPaymentId, total, returnUrl],
+      );
       await client.query("COMMIT");
+      const config = payFastConfig();
       res.status(201).json({
         ok: true,
-        data: [{ id: order.rows[0].id, reference, totalInCents: total, status: "PROCESSING" }],
+        data: [{
+          id: order.rows[0].id,
+          reference,
+          totalInCents: total,
+          status: "AWAITING_PAYMENT",
+          checkoutUrl: `${config.appUrl}/api/payfast/checkout/?shopPayment=${payment.rows[0].id}`,
+        }],
       });
     } catch (error) {
       await client.query("ROLLBACK");

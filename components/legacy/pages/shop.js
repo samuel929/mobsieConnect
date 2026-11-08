@@ -90,6 +90,16 @@ window.Pages=window.Pages||{};
               App.refresh();
             }catch(error){UI.toast(error.message,'alert');}
           }},
+          {icon:'delete',label:'Delete product',danger:true,onClick:async()=>{
+            if(!confirm(`Delete ${p.name}? It will be removed from the shop, while previous order records will be kept.`))return;
+            try{
+              await MobsieApi.mutate('/api/shop/products',{method:'DELETE',body:JSON.stringify({id:p.id})});
+              DB.products=DB.products.filter(item=>item.id!==p.id);
+              DB.save();
+              UI.toast(p.name+' deleted from the shop');
+              App.refresh();
+            }catch(error){UI.toast(error.message||'Could not delete product','alert');}
+          }},
         ],{align:'right'});
       });
       root.querySelector('#addProd').addEventListener('click',()=>UI.modal({

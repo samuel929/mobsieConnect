@@ -2,6 +2,7 @@ import { apiHandler, one } from "@/server/api";
 import { requireApplicationAccess } from "@/server/applicationAccess";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { schoolPrice } from "@/server/schoolPackages";
 import { preferencesSchema } from "@/server/validation";
 
 const branchReferencePrefix = (branchName: string) => {
@@ -14,6 +15,11 @@ const branchReferencePrefix = (branchName: string) => {
   if (value.includes("soweto")) return "S2";
   // New branches remain usable before a reference code is configured.
   return branchName.replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "APP";
+};
+
+const comparablePhoneNumber = (value: string | null) => {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length >= 9 ? digits.slice(-9) : digits;
 };
 
 export default apiHandler<{ saved: true; reference: string }>(
@@ -48,6 +54,29 @@ export default apiHandler<{ saved: true; reference: string }>(
       feePayerTermsAccepted:
         body.feePayerTermsAccepted ?? body.fee_payer_terms_accepted ?? false,
     });
+    const applicationContacts = await query<{
+      parentPhone: string;
+      additionalGuardianPhone: string | null;
+    }>(
+      `SELECT parent_phone AS "parentPhone",
+              additional_guardian_phone AS "additionalGuardianPhone"
+       FROM applications WHERE id=$1 LIMIT 1`,
+      [applicationId],
+    );
+    const emergencyPhone = comparablePhoneNumber(input.emergencyContactPhone);
+    const parentPhones = [
+      applicationContacts.rows[0]?.parentPhone,
+      applicationContacts.rows[0]?.additionalGuardianPhone,
+    ]
+      .filter((phone): phone is string => Boolean(phone))
+      .map(comparablePhoneNumber);
+    if (parentPhones.includes(emergencyPhone)) {
+      throw new AppError(
+        422,
+        "EMERGENCY_CONTACT_MUST_BE_ALTERNATIVE",
+        "Emergency contact must be someone other than an enrolling parent.",
+      );
+    }
     // Validate the selected campus before writing preferences. This gives the
     // mobile form a useful 422 instead of a database foreign-key failure.
     const branch = await query<{ name: string }>(
@@ -57,13 +86,15 @@ export default apiHandler<{ saved: true; reference: string }>(
       [input.branchId, applicationId],
     );
     if (!branch.rows[0]) throw new AppError(422, "BRANCH_NOT_FOUND", "Selected branch was not found.");
+    const fees = schoolPrice(input.schoolType, input.schoolStage, branch.rows[0].name);
     await query(
       `INSERT INTO application_preferences (
         application_id, branch_id, reason, school_type, school_stage, preferred_start_date, enrollment_type,
         previous_school, previous_school_phone, referral_source, attended_preschool, allergies, emergency_contact_name,
         emergency_contact_phone, fee_payer_first_name, fee_payer_last_name, fee_payer_terms_accepted,
-        aftercare_requested, aftercare_option, transport_requested, transport_route
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        aftercare_requested, aftercare_option, transport_requested, transport_route,
+        application_fee_cents, acceptance_fee_cents, monthly_fee_cents
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
       ON CONFLICT (application_id) DO UPDATE SET
         branch_id = EXCLUDED.branch_id, reason = EXCLUDED.reason,
         school_type = EXCLUDED.school_type, school_stage = EXCLUDED.school_stage,
@@ -83,6 +114,9 @@ export default apiHandler<{ saved: true; reference: string }>(
         fee_payer_first_name = EXCLUDED.fee_payer_first_name,
         fee_payer_last_name = EXCLUDED.fee_payer_last_name,
         fee_payer_terms_accepted = EXCLUDED.fee_payer_terms_accepted,
+        application_fee_cents = EXCLUDED.application_fee_cents,
+        acceptance_fee_cents = EXCLUDED.acceptance_fee_cents,
+        monthly_fee_cents = EXCLUDED.monthly_fee_cents,
         updated_at = now()`,
       [
         applicationId,
@@ -106,6 +140,9 @@ export default apiHandler<{ saved: true; reference: string }>(
         input.aftercareRequested ? input.aftercareOption || null : null,
         input.transportRequested,
         input.transportRequested ? input.transportRoute || null : null,
+        fees.applicationFeeCents,
+        fees.acceptanceFeeCents,
+        fees.monthlyFeeCents,
       ],
     );
     const prefix = branchReferencePrefix(branch.rows[0].name);

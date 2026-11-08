@@ -1,41 +1,72 @@
-import type { NextApiRequest,NextApiResponse } from "next";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { query } from "@/server/db";
-import { payFastConfig,payFastSignature,type PayFastFields } from "@/server/payfast";
+import { payFastConfig, payFastSignature, type PayFastFields } from "@/server/payfast";
 
-export default async function handler(req:NextApiRequest,res:NextApiResponse){
-  if(req.method!=="POST"){res.status(405).end();return;}
-  const fields=Object.fromEntries(Object.entries(req.body||{}).map(([key,value])=>[key,String(value)])) as PayFastFields;
-  const config=payFastConfig();
-  if(fields.merchant_id!==config.merchantId||!fields.signature||payFastSignature(fields,config.passphrase)!==fields.signature){res.status(400).send('Invalid signature');return;}
-  const payment=await query<any>("SELECT id,amount_cents FROM application_payments WHERE merchant_payment_id=$1",[fields.m_payment_id]);
-  const row=payment.rows[0];
-  if(!row||Math.abs(Number(fields.amount_gross)*100-Number(row.amount_cents))>1){res.status(400).send('Invalid amount');return;}
-  const validationBody=new URLSearchParams(Object.entries(fields).filter(([key])=>key!=='signature')).toString();
-  const validation=await fetch(config.validateUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:validationBody});
-  const valid=(await validation.text()).trim()==='VALID';
-  if(!valid){res.status(400).send('Invalid payment');return;}
-  const status=fields.payment_status==='COMPLETE'?'COMPLETE':fields.payment_status==='CANCELLED'?'CANCELLED':'FAILED';
-  const cents=(value:string|undefined)=>{
-    const amount=Number(value);
-    return Number.isFinite(amount)?Math.round(amount*100):null;
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") { res.status(405).end(); return; }
+  const fields = Object.fromEntries(
+    Object.entries(req.body || {}).map(([key, value]) => [key, String(value)]),
+  ) as PayFastFields;
+  const config = payFastConfig();
+  if (fields.merchant_id !== config.merchantId || !fields.signature ||
+      payFastSignature(fields, config.passphrase) !== fields.signature) {
+    res.status(400).send("Invalid signature"); return;
+  }
+  const isShop = req.query.type === "shop";
+  const table = isShop ? "shop_order_payments" : "application_payments";
+  const payment = await query<{ id: string; amountCents: number; orderId?: string }>(
+    `SELECT id,amount_cents AS "amountCents"${isShop ? ',order_id AS "orderId"' : ""}
+     FROM ${table} WHERE merchant_payment_id=$1`,
+    [fields.m_payment_id],
+  );
+  const row = payment.rows[0];
+  if (!row || Math.abs(Number(fields.amount_gross) * 100 - Number(row.amountCents)) > 1) {
+    res.status(400).send("Invalid amount"); return;
+  }
+  const validationBody = new URLSearchParams(
+    Object.entries(fields).filter(([key]) => key !== "signature"),
+  ).toString();
+  const validation = await fetch(config.validateUrl, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: validationBody,
+  });
+  if ((await validation.text()).trim() !== "VALID") {
+    res.status(400).send("Invalid payment"); return;
+  }
+  const status = fields.payment_status === "COMPLETE" ? "COMPLETE"
+    : fields.payment_status === "CANCELLED" ? "CANCELLED" : "FAILED";
+  const cents = (value: string | undefined) => {
+    const amount = Number(value); return Number.isFinite(amount) ? Math.round(amount * 100) : null;
   };
-  await query(`UPDATE application_payments SET
-    status=$2,
-    pf_payment_id=$3,
-    payment_payload=$4::jsonb,
-    payment_method=$5,
-    amount_gross_cents=$6,
-    amount_fee_cents=$7,
-    amount_net_cents=$8,
-    payer_first_name=$9,
-    payer_last_name=$10,
-    payer_email=$11,
-    paid_at=CASE WHEN $2='COMPLETE' THEN COALESCE(paid_at,now()) ELSE paid_at END,
-    updated_at=now()
-    WHERE id=$1`,[
-      row.id,status,fields.pf_payment_id||null,JSON.stringify(fields),
-      fields.payment_method||null,cents(fields.amount_gross),cents(fields.amount_fee),cents(fields.amount_net),
-      fields.name_first||null,fields.name_last||null,fields.email_address||null,
-    ]);
-  res.status(200).send('OK');
+  await query(
+    `UPDATE ${table} SET status=$2,pf_payment_id=$3,payment_payload=$4::jsonb,payment_method=$5,
+       amount_gross_cents=$6,amount_fee_cents=$7,amount_net_cents=$8,payer_first_name=$9,
+       payer_last_name=$10,payer_email=$11,
+       paid_at=CASE WHEN $2='COMPLETE' THEN COALESCE(paid_at,now()) ELSE paid_at END,updated_at=now()
+     WHERE id=$1`,
+    [row.id, status, fields.pf_payment_id || null, JSON.stringify(fields), fields.payment_method || null,
+      cents(fields.amount_gross), cents(fields.amount_fee), cents(fields.amount_net),
+      fields.name_first || null, fields.name_last || null, fields.email_address || null],
+  );
+  if (isShop && row.orderId) {
+    if (status === "COMPLETE") {
+      await query(
+        `UPDATE shop_orders SET status='PROCESSING',updated_at=now()
+         WHERE id=$1 AND status='AWAITING_PAYMENT'`, [row.orderId],
+      );
+    } else {
+      await query(
+        `WITH cancelled_order AS (
+           UPDATE shop_orders SET status='CANCELLED',updated_at=now()
+           WHERE id=$1 AND status='AWAITING_PAYMENT' RETURNING id
+         ), quantities AS (
+           SELECT i.product_id,sum(i.quantity)::integer AS quantity FROM shop_order_items i
+           WHERE i.order_id IN (SELECT id FROM cancelled_order) GROUP BY i.product_id
+         )
+         UPDATE shop_products p SET stock=p.stock+q.quantity,sold=GREATEST(0,p.sold-q.quantity),
+           status=CASE WHEN p.status='OUT_OF_STOCK' THEN 'ACTIVE' ELSE p.status END,updated_at=now()
+         FROM quantities q WHERE p.id=q.product_id`, [row.orderId],
+      );
+    }
+  }
+  res.status(200).send("OK");
 }

@@ -345,7 +345,8 @@ export const shopProductSchema = z.object({
   price: z.coerce.number().min(0).max(1_000_000),
   stock: z.coerce.number().int().min(0).max(10_000_000),
   status: z.enum(["ACTIVE", "HIDDEN", "OUT_OF_STOCK"]).default("ACTIVE"),
-  imageData: z.string().startsWith("data:image/").max(8_000_000).optional(),
+  // Base64 adds roughly 33% overhead; the endpoint enforces an 8 MB decoded-file limit.
+  imageData: z.string().startsWith("data:image/").max(12_000_000).optional(),
 });
 
 export const shopOrderStatusSchema = z.object({
