@@ -3,6 +3,7 @@ import { query } from "@/server/db";
 import { getParent } from "@/server/parentAuth";
 import { getParentDailyActivities } from "@/server/dailyActivities";
 import { getParentEvents } from "@/server/parentScope";
+import { processDueScheduledNotifications } from "@/server/scheduledNotifications";
 
 type ControlCentreStateRow = { state: Record<string, unknown> };
 
@@ -16,6 +17,10 @@ export default apiHandler<Record<string, unknown>>(
   async (req, res) => {
     res.setHeader("Cache-Control", "no-store, max-age=0");
     const parent = await getParent(req);
+    // Vercel Hobby only allows a daily cron. Mobile feed traffic acts as a
+    // secure, tenant-scoped wake-up so due pushes are still delivered promptly
+    // to every registered device without exposing the cron endpoint.
+    await processDueScheduledNotifications(parent.tenantId).catch(() => undefined);
     const [
       students,
       applications,
