@@ -16,7 +16,7 @@ window.Pages=window.Pages||{};
         columns:[
           {key:'name',label:'Campus',render:r=>`<div class="cell-main">${esc(r.name)}</div><div class="cell-sub">${esc(r.city)}</div>`},
           {key:'learners',label:'Learners',num:true,render:r=>F(r.learners)},
-          {key:'percentage',label:'Last 7 days',render:r=>`<div style="display:flex;align-items:center;gap:10px;min-width:150px"><span class="meter"><i style="width:${r.percentage}%"></i></span><b style="font-variant-numeric:tabular-nums">${r.entries?Number(r.percentage).toFixed(1):'—'}${r.entries?'%':''}</b></div>`},
+          {key:'percentage',label:'Last 7 days',render:r=>`<div style="display:flex;align-items:center;gap:10px;min-width:150px"><span class="meter"><i style="width:${DB.safeNumber(r.percentage)}%"></i></span><b style="font-variant-numeric:tabular-nums">${r.entries?DB.safeNumber(r.percentage).toFixed(1):'—'}${r.entries?'%':''}</b></div>`},
           {key:'entries',label:'Entries',num:true},
           {key:'absentToday',label:'Absent today',num:true},
         ],
@@ -1906,7 +1906,7 @@ Pages['daily-activity'] = {
         </div>
         <div class="card"><div class="card-head"><div><h3>Report runs</h3></div></div>
           <div class="card-body" style="padding-top:8px">
-            <div class="empty-state" style="padding:48px 20px"><div class="empty-ico">${MCIcon('reports')}</div><b>No generated report history</b><p>Use Generate Report to export the current Neon summary.</p></div>
+            <div class="empty" style="padding:36px 20px"><div class="e-ic">${MCIcon('reports')}</div><h4>No generated report history</h4><p>Use Generate Report to export the current Neon summary.</p></div>
           </div></div>
         <style>@media(max-width:1100px){#repTop{grid-template-columns:1fr}}</style>`;
     },

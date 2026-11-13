@@ -27,9 +27,10 @@
   const phone=()=>'0'+pick(['61','62','71','72','73','82','83','84'])+' '+ri(100,999)+' '+String(ri(0,9999)).padStart(4,'0');
 
   // --- Formatters -------------------------------------------------------
-  const fmtN=n=>n.toLocaleString('en-ZA');
-  const fmtR=n=>'R'+Math.round(n).toLocaleString('en-ZA');
-  const fmtRk=n=>n>=1e6?'R'+(n/1e6).toFixed(1)+'M':n>=1e3?'R'+(n/1e3).toFixed(0)+'K':'R'+Math.round(n);
+  const safeNumber=value=>{const number=Number(value);return Number.isFinite(number)?number:0;};
+  const fmtN=value=>safeNumber(value).toLocaleString('en-ZA');
+  const fmtR=value=>'R'+Math.round(safeNumber(value)).toLocaleString('en-ZA');
+  const fmtRk=value=>{const n=safeNumber(value);return n>=1e6?'R'+(n/1e6).toFixed(1)+'M':n>=1e3?'R'+(n/1e3).toFixed(0)+'K':'R'+Math.round(n);};
 
   // --- The school -------------------------------------------------------
   const schools=[{
@@ -333,7 +334,7 @@
   ];
 
   window.DB={rnd,ri,pick,FIRST,LAST,GRADES,AV,SCHOOL_NAME,
-    name,initials,avColor,email,phone,fmtN,fmtR,fmtRk,
+    name,initials,avColor,email,phone,safeNumber,fmtN,fmtR,fmtRk,
     schools,branches,liveBranches,totals,teachers,parents,learners,
     applications,appCounts,APP_STATUS,interviews,waitingList,deregistrations:[],
     payments,invoices,discounts,

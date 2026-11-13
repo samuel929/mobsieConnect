@@ -30,17 +30,18 @@ window.Pages=window.Pages||{};
           body:`
             <div style="display:flex;gap:8px;margin-bottom:18px">${UI.status(p.status)} ${UI.badge(p.method,'blue')}</div>
             <div style="font-size:30px;font-weight:800;color:var(--ink-900);letter-spacing:-.02em;margin-bottom:16px">${R(p.amount)}</div>
-            ${UI.dl([['Parent',esc(p.parent)],['Email',esc(p.payerEmail||'—')],['Child',esc(p.child||'—')],['Branch',esc(p.branch)],['Application',esc(p.ref)],['Paid',esc(p.date)],['Method',esc(p.method)],['PayFast fee',R(p.fee||0)],['Net settled',R(p.net||0)],['PayFast ID',esc(p.payFastPaymentId||'—')]])}`,
+            ${UI.dl([['Description',esc(p.description||'Payment')],['Parent',esc(p.parent)],['Email',esc(p.payerEmail||'—')],['Child',esc(p.child||'—')],['Branch',esc(p.branch)],['Payment reference',esc(p.ref)],['Paid',esc(p.date)],['Method',esc(p.method)],['PayFast fee',R(p.fee||0)],['Net settled',R(p.net||0)],['PayFast ID',esc(p.payFastPaymentId||'—')]])}`,
           foot:`<button class="btn btn-ghost" id="payRcpt">${MCIcon('download')} Export transaction</button>`,
           mount(root,close){
             root.querySelector('#payRcpt').addEventListener('click',()=>UI.downloadCSV('receipt-'+p.id+'.csv',
-              ['PayFast ID','Merchant reference','Parent','Email','Child','Branch','Application','Gross (R)','Fee (R)','Net (R)','Method','Date','Status'],
-              [[p.payFastPaymentId,p.merchantPaymentId,p.parent,p.payerEmail,p.child,p.branch,p.ref,p.amount,p.fee,p.net,p.method,p.date,p.status]]));
+              ['PayFast ID','Merchant reference','Description','Parent','Email','Child','Branch','Payment reference','Gross (R)','Fee (R)','Net (R)','Method','Date','Status'],
+              [[p.payFastPaymentId,p.merchantPaymentId,p.description,p.parent,p.payerEmail,p.child,p.branch,p.ref,p.amount,p.fee,p.net,p.method,p.date,p.status]]));
           }
         }),
         columns:[
           {key:'id',label:'Reference'},
           {key:'parent',label:'Parent',render:r=>UI.personCell(r.parent,r.school)},
+          {key:'description',label:'Description'},
           {key:'amount',label:'Amount',num:true,render:r=>`<b>${R(r.amount)}</b>`},
           {key:'method',label:'Method'},
           {key:'date',label:'Date'},
@@ -76,8 +77,8 @@ window.Pages=window.Pages||{};
     mount(root){
       root.querySelector('#payQ').addEventListener('input',e=>UI.tableFilter(Pages.payments._tid,e.target.value));
       root.querySelector('#payExp').addEventListener('click',()=>UI.downloadCSV('mobsie-payments.csv',
-        ['PayFast ID','Merchant reference','Parent','Email','Child','Branch','Application','Gross (R)','Fee (R)','Net (R)','Method','Date','Status'],
-        DB.payments.map(p=>[p.payFastPaymentId,p.merchantPaymentId,p.parent,p.payerEmail,p.child,p.branch,p.ref,p.amount,p.fee,p.net,p.method,p.date,p.status])));
+        ['PayFast ID','Merchant reference','Description','Parent','Email','Child','Branch','Payment reference','Gross (R)','Fee (R)','Net (R)','Method','Date','Status'],
+        DB.payments.map(p=>[p.payFastPaymentId,p.merchantPaymentId,p.description,p.parent,p.payerEmail,p.child,p.branch,p.ref,p.amount,p.fee,p.net,p.method,p.date,p.status])));
     }
   };
 

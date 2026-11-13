@@ -124,6 +124,15 @@ export default apiHandler<unknown>(
          a.status::text,
          a.submitted_at::text AS "submittedAt",
          a.created_at::text AS "createdAt",
+         a.waiting_list_email_sent_at::text AS "waitlistedAt",
+         a.approval_email_sent_at::text AS "approvedAt",
+         CASE WHEN a.parent_account_id IS NOT NULL AND EXISTS (
+           SELECT 1
+           FROM students sibling
+           WHERE sibling.tenant_id = a.tenant_id
+             AND sibling.parent_account_id = a.parent_account_id
+             AND sibling.application_id IS DISTINCT FROM a.id
+         ) THEN 'Sibling' ELSE 'Standard' END AS "waitingListPriority",
          b.id AS "branchId",
          b.name AS "branchName",
          COALESCE(d.document_count, 0)::int AS "documentCount",

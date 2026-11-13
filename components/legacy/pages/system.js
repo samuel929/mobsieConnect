@@ -250,12 +250,12 @@ window.Pages=window.Pages||{};
         <td class="pc"><button class="perm-dot ${r.grants[pi]?'yes':'no'}" data-perm="${ri}:${pi}" aria-label="${r.name} — ${p}">${MCIcon(r.grants[pi]?'check':'x')}</button></td>`).join('')}</tr>`).join('');
       return `
         ${UI.pageHead('Roles & Permissions','Role-based access control — click any cell to grant or revoke.',
-          `<button class="btn btn-ghost">${MCIcon('copy')} Duplicate Role</button>
+          `<button class="btn btn-ghost" id="duplicateRole">${MCIcon('copy')} Duplicate Role</button>
            <button class="btn btn-purple" id="newRole">${MCIcon('plus')} Create Custom Role</button>`)}
         <div class="grid cards-3" style="margin-bottom:20px">
           ${UI.statCard({icon:'roles',tint:'t-purple',label:'Defined Roles',value:String(DB.rolePerms.roles.length),deltaHtml:`<span class="delta flat">RBAC enforced everywhere</span>`})}
-          ${UI.statCard({icon:'lock',tint:'t-orange',label:'Permission Checks / day',value:'184K',deltaHtml:`<span class="delta flat">avg 4ms overhead</span>`})}
-          ${UI.statCard({icon:'audit',tint:'t-blue',label:'Changes This Month',value:'14',deltaHtml:`<span class="delta flat">all logged to audit trail</span>`})}
+          ${UI.statCard({icon:'lock',tint:'t-orange',label:'Granted Permissions',value:F(DB.roleStats?.grantedPermissions),deltaHtml:`<span class="delta flat">across all defined roles</span>`})}
+          ${UI.statCard({icon:'audit',tint:'t-blue',label:'Changes This Month',value:F(DB.roleStats?.changesThisMonth),deltaHtml:`<span class="delta flat">recorded in the database audit trail</span>`})}
         </div>
         <div class="card"><div class="card-head"><div><h3>Permission matrix</h3><div class="sub">Every grant is scoped — a School Owner only ever sees their own school</div></div></div>
           <div class="card-body table-wrap" style="padding-top:8px">
@@ -275,29 +275,66 @@ window.Pages=window.Pages||{};
         try{
           await MobsieApi.mutate('/api/roles',{method:'PUT',body:JSON.stringify({roleId:r.id,permission:DB.rolePerms.perms[pi],granted:Boolean(next)})});
           if(DB.currentRole?.id===r.id){DB.currentPermissions=DB.rolePerms.perms.filter((_,index)=>r.grants[index]);DB.currentRole.permissions=DB.currentPermissions;}
+          DB.roleStats=DB.roleStats||{grantedPermissions:0,changesThisMonth:0};
+          DB.roleStats.grantedPermissions=Math.max(0,Number(DB.roleStats.grantedPermissions||0)+(next?1:-1));
+          DB.roleStats.changesThisMonth=Number(DB.roleStats.changesThisMonth||0)+1;
           DB.log((next?'Granted permission':'Revoked permission'),DB.rolePerms.perms[pi]+' — '+r.name,'warn');
           UI.toast(`${next?'Granted':'Revoked'} “${DB.rolePerms.perms[pi]}” for ${r.name}`);App.refresh();
         }catch(error){r.grants[pi]=previous;b.className='perm-dot '+(previous?'yes':'no');b.innerHTML=MCIcon(previous?'check':'x');UI.toast(error.message||'Could not save permission','alert');}
       });
+      root.querySelector('#duplicateRole').addEventListener('click',()=>UI.modal({
+        title:'Duplicate Role',
+        body:`<div class="field"><label>Role to duplicate</label><select data-f="baseRoleId">${DB.rolePerms.roles.map(role=>`<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></div>
+          <div class="field"><label>New role name</label><input type="text" data-f="name" placeholder="e.g. Finance Assistant"></div>
+          <div class="field"><label>Role colour</label><input type="color" data-f="color" value="#2563EB"></div>
+          <p class="small muted">The new role will receive the same saved permissions. Changes made afterward are independent.</p>`,
+        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-purple" data-s>Duplicate Role</button>`,
+        mount(modal,close){
+          modal.querySelector('[data-x]').addEventListener('click',close);
+          modal.querySelector('[data-s]').addEventListener('click',async()=>{
+            const values=UI.formVals(modal),name=String(values.name||'').trim();
+            if(name.length<2){UI.toast('Enter a name for the duplicated role','alert');return;}
+            const base=DB.rolePerms.roles.find(role=>role.id===values.baseRoleId);
+            if(!base){UI.toast('Select a valid role to duplicate','alert');return;}
+            const save=modal.querySelector('[data-s]');save.disabled=true;save.textContent='Duplicating…';
+            try{
+              const response=await MobsieApi.mutate('/api/roles',{method:'POST',body:JSON.stringify({name,baseRoleId:base.id,color:values.color})});
+              const created=response.data;
+              DB.rolePerms.roles.push({id:created.id,name:created.name,color:created.color,users:0,isSystem:false,grants:DB.rolePerms.perms.map(permission=>(created.permissions||[]).includes(permission)?1:0)});
+              DB.roleStats=DB.roleStats||{grantedPermissions:0,changesThisMonth:0};
+              DB.roleStats.grantedPermissions=Number(DB.roleStats.grantedPermissions||0)+(created.permissions||[]).length;
+              DB.roleStats.changesThisMonth=Number(DB.roleStats.changesThisMonth||0)+1;
+              DB.log('Duplicated role',base.name+' → '+name,'warn');
+              close();UI.toast('Role "'+name+'" duplicated and saved');App.refresh();
+            }catch(error){save.disabled=false;save.textContent='Duplicate Role';UI.toast(error.message||'Could not duplicate role','alert');}
+          });
+        }
+      }));
       root.querySelector('#newRole').addEventListener('click',()=>UI.modal({
         title:'Create Custom Role',
-        body:`<div class="field"><label>Role name</label><input type="text" placeholder="e.g. Marketing Coordinator"></div>
-          <div class="field"><label>Start from</label><select>${DB.rolePerms.roles.map(r=>`<option>${r.name}</option>`).join('')}</select></div>
-          <div class="field"><label>Default scope</label><select><option>One school</option><option>One branch</option><option>Entire platform</option></select></div>
+        body:`<div class="field"><label>Role name</label><input type="text" data-f="name" placeholder="e.g. Marketing Coordinator"></div>
+          <div class="field"><label>Start from</label><select data-f="baseRoleId">${DB.rolePerms.roles.map(role=>`<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></div>
+          <div class="field"><label>Role colour</label><input type="color" data-f="color" value="#0D9488"></div>
           <p class="small muted">You can fine-tune every permission in the matrix after creating the role.</p>`,
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-purple" data-s>Create Role</button>`,
         mount(r,close){
           r.querySelector('[data-x]').addEventListener('click',close);
           r.querySelector('[data-s]').addEventListener('click',async()=>{
-            const nm=r.querySelector('input').value.trim();
-            if(!nm){UI.toast('Name the role first','alert');return;}
-            const base=DB.rolePerms.roles.find(x=>x.name===r.querySelector('select').value)||DB.rolePerms.roles[2];
+            const values=UI.formVals(r),nm=String(values.name||'').trim();
+            if(nm.length<2){UI.toast('Enter a role name with at least 2 characters','alert');return;}
+            const base=DB.rolePerms.roles.find(role=>role.id===values.baseRoleId);
+            if(!base){UI.toast('Select a valid starting role','alert');return;}
+            const save=r.querySelector('[data-s]');save.disabled=true;save.textContent='Creating…';
             try{
-              const response=await MobsieApi.mutate('/api/roles',{method:'POST',body:JSON.stringify({name:nm,baseRoleId:base.id})});
-              DB.rolePerms.roles.push({id:response.data.id,name:nm,color:'#0D9488',users:0,grants:[...base.grants]});
+              const response=await MobsieApi.mutate('/api/roles',{method:'POST',body:JSON.stringify({name:nm,baseRoleId:base.id,color:values.color})});
+              const created=response.data;
+              DB.rolePerms.roles.push({id:created.id,name:created.name,color:created.color,users:0,isSystem:false,grants:DB.rolePerms.perms.map(permission=>(created.permissions||[]).includes(permission)?1:0)});
+              DB.roleStats=DB.roleStats||{grantedPermissions:0,changesThisMonth:0};
+              DB.roleStats.grantedPermissions=Number(DB.roleStats.grantedPermissions||0)+(created.permissions||[]).length;
+              DB.roleStats.changesThisMonth=Number(DB.roleStats.changesThisMonth||0)+1;
               DB.log('Created custom role',nm,'warn');
               close();UI.toast('Role "'+nm+'" created — fine-tune it in the matrix');App.refresh();
-            }catch(error){UI.toast(error.message||'Could not create role','alert');}
+            }catch(error){save.disabled=false;save.textContent='Create Role';UI.toast(error.message||'Could not create role','alert');}
           });
         }
       }));

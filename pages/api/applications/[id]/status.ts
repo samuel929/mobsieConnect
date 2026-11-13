@@ -45,6 +45,11 @@ type ApplicationStatusRow = {
   waitingListEmailSentAt: string | null;
   interviewEmailSentAt: string | null;
   declinedEmailSentAt: string | null;
+  tenantId: string;
+  parentAccountId: string | null;
+  childDateOfBirth: string;
+  currentGrade: string;
+  branchId: string | null;
 };
 
 export default apiHandler<Record<string, unknown>>(
@@ -63,11 +68,16 @@ export default apiHandler<Record<string, unknown>>(
     const existing = await query<ApplicationStatusRow>(
       `SELECT
          a.id,
+         a.tenant_id AS "tenantId",
+         a.parent_account_id AS "parentAccountId",
          a.reference,
          a.status::text,
          a.parent_name AS "parentName",
          a.parent_email::text AS "parentEmail",
          a.child_name AS "childName",
+         a.child_date_of_birth::text AS "childDateOfBirth",
+         a.current_grade AS "currentGrade",
+         p.branch_id AS "branchId",
          b.name AS "branchName",
          a.approval_email_sent_at::text AS "approvalEmailSentAt",
          a.waiting_list_email_sent_at::text AS "waitingListEmailSentAt"
@@ -157,6 +167,38 @@ export default apiHandler<Record<string, unknown>>(
        WHERE id = $1`,
       [application.id, input.status],
     );
+
+    if (input.status === "APPROVED") {
+      if (!application.branchId) {
+        throw new AppError(422, "BRANCH_REQUIRED", "Choose a branch before approving this application.");
+      }
+      await query(
+        `INSERT INTO students (
+           tenant_id, branch_id, application_id, parent_account_id,
+           name, date_of_birth, grade, class_name, parent_name, enrollment_status
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,'ENROLLED')
+         ON CONFLICT (application_id) DO UPDATE SET
+           branch_id=EXCLUDED.branch_id,
+           parent_account_id=EXCLUDED.parent_account_id,
+           name=EXCLUDED.name,
+           date_of_birth=EXCLUDED.date_of_birth,
+           grade=EXCLUDED.grade,
+           class_name=EXCLUDED.class_name,
+           parent_name=EXCLUDED.parent_name,
+           enrollment_status='ENROLLED',
+           updated_at=now()`,
+        [
+          application.tenantId,
+          application.branchId,
+          application.id,
+          application.parentAccountId,
+          application.childName,
+          application.childDateOfBirth,
+          application.currentGrade,
+          application.parentName,
+        ],
+      );
+    }
 
     if (input.consents) {
       await query(

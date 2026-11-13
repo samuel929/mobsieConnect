@@ -227,15 +227,18 @@ window.Pages=window.Pages||{};
             const tone=r.stock===0?'red':r.stock<20?'amber':'';
             return `<div style="display:flex;align-items:center;gap:10px;min-width:130px"><span class="meter ${tone}"><i style="width:${Math.max(3,pct)}%"></i></span></div>`;}},
           {key:'reorder',label:'Reorder',render:r=>UI.badge(r.reorder,r.reorder==='Healthy'?'green':r.reorder==='Reorder soon'?'amber':'red')},
-          {label:'',sortable:false,render:r=>`<button class="btn btn-soft btn-sm" data-restock="${esc(r.name)}">Restock</button>`},
+          {label:'Actions',sortable:false,render:r=>`<div style="display:flex;align-items:center;gap:8px;white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" data-inventory-edit="${esc(r.id)}">${MCIcon('edit')} Edit</button>
+            <button class="btn btn-soft btn-sm" data-restock="${esc(r.id)}">Restock</button>
+          </div>`},
         ],
       });
       return `
         ${UI.pageHead('Inventory','Live stock levels across every school shop.',
-          `<button class="btn btn-ghost">${MCIcon('download')} Stock Report</button>
+          `<button class="btn btn-ghost" id="stockReport">${MCIcon('download')} Stock Report</button>
            <button class="btn btn-primary" id="receiveStock">${MCIcon('plus')} Receive Stock</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'inventory',tint:'t-blue',label:'SKUs Tracked',value:String(DB.products.length+16),deltaHtml:`<span class="delta flat">5 campus shops</span>`})}
+          ${UI.statCard({icon:'inventory',tint:'t-blue',label:'SKUs Tracked',value:String(DB.products.length),deltaHtml:`<span class="delta flat">live products</span>`})}
           ${UI.statCard({icon:'wallet',tint:'t-green',label:'Stock Value',value:DB.fmtRk(DB.products.reduce((a,p)=>a+p.stock*p.price,0)),deltaHtml:`<span class="delta flat">at retail price</span>`})}
           ${UI.statCard({icon:'alert',tint:'t-amber',label:'Low Stock',value:String(DB.products.filter(p=>p.stock>0&&p.stock<20).length),deltaHtml:`<span class="delta flat">reorder suggested</span>`})}
           ${UI.statCard({icon:'x',tint:'t-red',label:'Out of Stock',value:String(DB.products.filter(p=>p.stock===0).length),deltaHtml:`<span class="delta flat">orders paused</span>`})}
@@ -245,14 +248,65 @@ window.Pages=window.Pages||{};
     },
     mount(root){
       root.addEventListener('click',e=>{
-        const b=e.target.closest('[data-restock]');
-        if(!b) return;
-        const p=DB.products.find(x=>x.name===b.dataset.restock);
-        if(p) receiveStock(p);
+        const edit=e.target.closest('[data-inventory-edit]');
+        if(edit){
+          const p=DB.products.find(x=>x.id===edit.dataset.inventoryEdit);
+          if(p) editInventoryProduct(p);
+          return;
+        }
+        const restock=e.target.closest('[data-restock]');
+        if(restock){
+          const p=DB.products.find(x=>x.id===restock.dataset.restock);
+          if(p) receiveStock(p);
+        }
       });
       root.querySelector('#receiveStock').addEventListener('click',()=>receiveStock());
+      root.querySelector('#stockReport').addEventListener('click',()=>UI.downloadCSV('inventory-stock-report.csv',
+        ['Product','Category','In stock','Sold (term)','Unit price (R)','Stock value (R)','Status'],
+        DB.products.map(p=>[p.name,p.cat,p.stock,p.sold,p.price,p.stock*p.price,p.status])));
     }
   };
+
+  function editInventoryProduct(p){
+    UI.modal({
+      title:'Edit Inventory',
+      body:`<div class="field"><label>Product name</label><input type="text" data-f="name" value="${esc(p.name)}"></div>
+        <div class="form-row">
+          <div class="field"><label>Category</label><select data-f="cat">${['Uniform','Stationery','Accessories','Books'].map(c=>`<option ${p.cat===c?'selected':''}>${c}</option>`).join('')}</select></div>
+          <div class="field"><label>Unit price (R)</label><input type="number" min="0" step="0.01" data-f="price" value="${p.price}"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Exact stock quantity</label><input type="number" min="0" step="1" data-f="stock" value="${p.stock}"><div class="small muted" style="margin-top:6px">This replaces the current stock level. Use Restock to add received units instead.</div></div>
+          <div class="field"><label>Shop visibility</label><select data-f="visibility"><option value="ACTIVE" ${p.status!=='Hidden'?'selected':''}>Visible in shop</option><option value="HIDDEN" ${p.status==='Hidden'?'selected':''}>Hidden from shop</option></select></div>
+        </div>
+        <div class="field"><label>Available colours (comma separated)</label><input type="text" data-f="colors" value="${esc((p.colors||[]).join(', '))}" placeholder="e.g. Red, Blue, Green"></div>`,
+      foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Save Changes</button>`,
+      mount(r,close){
+        r.querySelector('[data-x]').addEventListener('click',close);
+        r.querySelector('[data-s]').addEventListener('click',async()=>{
+          const v=UI.formVals(r),stock=Math.round(Number(v.stock)),price=Number(v.price);
+          if(!String(v.name||'').trim()||String(v.name).trim().length<2){UI.toast('Enter a valid product name','alert');return;}
+          if(!Number.isFinite(stock)||stock<0){UI.toast('Stock must be zero or more','alert');return;}
+          if(!Number.isFinite(price)||price<0){UI.toast('Enter a valid product price','alert');return;}
+          const status=v.visibility==='HIDDEN'?'HIDDEN':stock===0?'OUT_OF_STOCK':'ACTIVE';
+          const save=r.querySelector('[data-s]');
+          save.disabled=true;save.textContent='Saving…';
+          try{
+            const response=await MobsieApi.mutate('/api/shop/products',{method:'PUT',body:JSON.stringify({
+              id:p.id,name:String(v.name).trim(),category:v.cat,price,stock,status,
+              colors:String(v.colors||'').split(',').map(c=>c.trim()).filter(Boolean)
+            })});
+            const saved=response.data[0];
+            Object.assign(p,{name:saved.name,price:Number(saved.price),cat:saved.category,stock:Number(saved.stock),colors:saved.colors||[],imageUrl:saved.imageUrl,
+              status:saved.status==='HIDDEN'?'Hidden':saved.status==='OUT_OF_STOCK'?'Out of Stock':Number(saved.stock)<20?'Low Stock':'Active'});
+            DB.save();
+            DB.log('Updated inventory',p.name+' — '+p.stock+' units','ok');
+            close();UI.toast(p.name+' inventory updated');App.refresh();
+          }catch(error){save.disabled=false;save.textContent='Save Changes';UI.toast(error.message||'Could not update inventory','alert');}
+        });
+      }
+    });
+  }
 
   function receiveStock(selected){
     UI.modal({

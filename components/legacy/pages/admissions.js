@@ -786,7 +786,11 @@ window.Pages=window.Pages||{};
         ${MCIcon("download")}
         Download PDF
       </a>
-
+      ${['APPROVED','ENROLLED'].includes(String(detail?.status||a.status||'').toUpperCase().replaceAll(' ','_')) ? `
+      <button class="btn btn-danger" id="apDeregister">
+        ${MCIcon("x")}
+        Deregister
+      </button>` : `
       <button
         class="btn btn-danger"
         id="apWaitlist"
@@ -811,10 +815,30 @@ window.Pages=window.Pages||{};
       >
         ${MCIcon("check")}
         Approve
-      </button>
+      </button>`}
     `,
 
     mount(root, close) {
+      root.querySelector('#apDeregister')?.addEventListener('click',()=>UI.modal({
+        title:'Deregister '+(detail?.childName||a.child),
+        body:`<div class="field"><label>Last day of attendance</label><input type="date" data-f="lastDayOfAttendance" required></div>
+          <div class="field"><label>Reason</label><select data-f="reason"><option value="MOVING_SCHOOLS">Moving schools</option><option value="RELOCATING">Relocating</option><option value="FINANCIAL_REASONS">Financial reasons</option><option value="PERSONAL_REASONS">Personal reasons</option><option value="OTHER">Other</option></select></div>
+          <div class="field"><label>Comments</label><textarea data-f="comments" placeholder="Optional notes"></textarea></div>
+          <p class="small muted">The learner will be scheduled for removal at year end.</p>`,
+        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" data-s>Confirm Deregistration</button>`,
+        mount(modal,closeModal){
+          modal.querySelector('[data-x]').addEventListener('click',closeModal);
+          modal.querySelector('[data-s]').addEventListener('click',async event=>{
+            const values=UI.formVals(modal),button=event.currentTarget;
+            if(!values.lastDayOfAttendance){UI.toast('Choose the last day of attendance','alert');return;}
+            button.disabled=true;
+            try{
+              await MobsieApi.mutate('/api/deregistrations',{method:'POST',body:JSON.stringify({applicationId:detail?.id||applicationIdentifier,lastDayOfAttendance:values.lastDayOfAttendance,reason:values.reason,comments:values.comments||''})});
+              closeModal();close();await MobsieApi.load();UI.toast('Deregistration scheduled for year end');App.refresh();
+            }catch(error){button.disabled=false;UI.toast(error.message||'Could not deregister the learner','alert');}
+          });
+        }
+      }));
       root.querySelectorAll("[data-doc-review]").forEach((reviewButton) =>
         reviewButton.addEventListener("click", async (event) => {
           const button = event.currentTarget;
@@ -857,6 +881,7 @@ window.Pages=window.Pages||{};
               DB.log("Approved application", a.id + " — " + a.child, "ok");
               close();
               UI.toast("Application approved and email sent to " + a.parent);
+              await MobsieApi.load();
               App.refresh();
             } catch (error) {
               button.disabled = false;
@@ -1270,6 +1295,7 @@ function formatDocumentSize(bytes) {
   /* ---------- Waiting List ---------- */
   function renderWaiting(){
     const rows=App.scoped(DB.waitingList);
+    const stats=DB.waitingListStats||{placedThisMonth:0,averageWaitWeeks:0};
     const tbl=UI.table({
       pageSize:10, rows,
       columns:[
@@ -1277,20 +1303,18 @@ function formatDocumentSize(bytes) {
         {key:'child',label:'Child',render:r=>UI.personCell(r.child,r.grade)},
         {key:'parent',label:'Parent'},
         {key:'school',label:'School',render:r=>`<div>${esc(r.school)}</div><div class="cell-sub">${esc(r.branch)}</div>`},
-        {key:'since',label:'On list since'},
+        {key:'waitlistedAt',label:'On list since',render:r=>r.waitlistedAt?new Date(r.waitlistedAt).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}):'—'},
         {key:'priority',label:'Priority',render:r=>UI.status(r.priority)},
-        {label:'',sortable:false,render:r=>r.offered?UI.status('Offered'):`<button class="btn btn-soft btn-sm" data-offer="${r.id}">Offer place</button>`},
+        {label:'',sortable:false,render:r=>`<button class="btn btn-soft btn-sm" data-offer="${r.id}">Offer place</button>`},
       ],
     });
     return `
-      ${UI.pageHead('Waiting List','Families queued for a place, with sibling and staff priority handling.',
-        `<button class="btn btn-ghost" id="wlNotify">${MCIcon('campaigns')} Notify All</button>
-         <button class="btn btn-primary" id="wlAdd">${MCIcon('plus')} Add to List</button>`)}
+      ${UI.pageHead('Waiting List','Families queued for a place from submitted applications.')}
       <div class="grid cards-4" style="margin-bottom:20px">
-        ${UI.statCard({icon:'waiting',tint:'t-amber',label:'On Waiting List',value:F(DB.waitingList.length),deltaHtml:UI.delta(12,'up','this term')})}
+        ${UI.statCard({icon:'waiting',tint:'t-amber',label:'On Waiting List',value:F(DB.waitingList.length),deltaHtml:`<span class="delta flat">live applications</span>`})}
         ${UI.statCard({icon:'parents',tint:'t-purple',label:'Sibling Priority',value:F(DB.waitingList.filter(w=>w.priority==='Sibling').length),deltaHtml:`<span class="delta flat">of the list</span>`})}
-        ${UI.statCard({icon:'check',tint:'t-green',label:'Placed This Month',value:'9',deltaHtml:UI.delta(9,'up','vs April')})}
-        ${UI.statCard({icon:'clock',tint:'t-blue',label:'Avg Wait Time',value:'6.4 wks',deltaHtml:UI.delta(4,'down','improving')})}
+        ${UI.statCard({icon:'check',tint:'t-green',label:'Placed This Month',value:F(stats.placedThisMonth),deltaHtml:`<span class="delta flat">approved applicants</span>`})}
+        ${UI.statCard({icon:'clock',tint:'t-blue',label:'Avg Wait Time',value:`${DB.safeNumber(stats.averageWaitWeeks).toFixed(1)} wks`,deltaHtml:`<span class="delta flat">current list</span>`})}
       </div>
       <div class="card"><div class="card-head"><div><h3>Current waiting list</h3><div class="sub">Ordered by position — offers release automatically when a seat opens</div></div></div>
         <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
@@ -1298,40 +1322,21 @@ function formatDocumentSize(bytes) {
   Pages['waiting-list']={
     render:renderWaiting,
     mount(root){
-      root.addEventListener('click',e=>{
+      root.addEventListener('click',async e=>{
         const b=e.target.closest('[data-offer]');
         if(b){
           const w=DB.waitingList.find(x=>x.id===b.dataset.offer);
-          if(w){w.offered=true;DB.log('Offered place',w.child+' — '+w.school,'ok');
-            UI.toast('Offer sent — family has 48 hours to accept');App.refresh();}
+          if(!w)return;
+          b.disabled=true;
+          try{
+            await MobsieApi.mutate('/api/applications/'+encodeURIComponent(w.applicationId)+'/status',{method:'PUT',body:JSON.stringify({status:'APPROVED'})});
+            await MobsieApi.load();
+            DB.log('Offered place',w.child+' — '+w.school,'ok');
+            UI.toast('Place offered and applicant approved');
+            App.refresh();
+          }catch(error){b.disabled=false;UI.toast(error.message||'Could not offer the place','alert');}
         }
       });
-      root.querySelector('#wlNotify').addEventListener('click',()=>UI.toast('Position update sent to all '+DB.waitingList.length+' families'));
-      root.querySelector('#wlAdd').addEventListener('click',()=>UI.modal({
-        title:'Add to Waiting List',
-        body:`<div class="form-row">
-            <div class="field"><label>Child's name</label><input type="text" data-f="child" placeholder="Full name"></div>
-            <div class="field"><label>Grade</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
-          </div>
-          <div class="field"><label>Parent / guardian</label><input type="text" data-f="parent" placeholder="Full name"></div>
-          <div class="form-row">
-            <div class="field"><label>School</label><select data-f="school">${DB.schools.slice(0,15).map(s=>`<option>${esc(s.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>Priority</label><select data-f="priority"><option>Standard</option><option>Sibling</option><option>Staff Child</option></select></div>
-          </div>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Add to List</button>`,
-        mount(r,close){
-          r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',()=>{
-            const v=UI.formVals(r);
-            if(!v.child){UI.toast('Child name is required','alert');return;}
-            DB.waitingList.push({id:'WL-'+(103+DB.waitingList.length),child:v.child,parent:v.parent||'—',
-              school:v.school,branch:'Main branch',grade:v.grade,position:DB.waitingList.length+1,
-              since:'May 18, 2026',priority:v.priority});
-            DB.log('Added to waiting list',v.child+' — '+v.school,'info');
-            close();UI.toast('Added to the waiting list at position '+DB.waitingList.length);App.refresh();
-          });
-        }
-      }));
     }
   };
 })();

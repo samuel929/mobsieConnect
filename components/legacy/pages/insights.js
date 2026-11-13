@@ -2,6 +2,9 @@
 window.Pages=window.Pages||{};
 (function(){
   const esc=UI.esc, F=DB.fmtN, Rk=DB.fmtRk;
+  const documentFilters={search:'',folder:'',type:''};
+  const documentType=document=>document.mimeType==='application/pdf'?'PDF':String(document.mimeType||'').startsWith('image/')?'Image':'Other';
+  const documentUrl=(document,disposition)=>`/api/documents/${encodeURIComponent(document.id)}/file?disposition=${disposition}`;
 
   Pages.analytics={
     render(){
@@ -66,14 +69,18 @@ window.Pages=window.Pages||{};
       const folderNames=[...new Set(['Policies','Compliance','HR','Finance','Safety','Academics',...(DB.docFolders||[]).map(f=>f.name),...DB.documentsList.map(d=>d.folder)].filter(Boolean))];
       const folders=folderNames.map((name,index)=>({name,count:DB.documentsList.filter(d=>d.folder===name).length,tint:['t-blue','t-purple','t-green','t-orange','t-red','t-teal'][index%6]}));
       DB.docFolders=folders;
+      const visibleDocuments=DB.documentsList.filter(document=>{
+        return (!documentFilters.folder||document.folder===documentFilters.folder)
+          &&(!documentFilters.type||documentType(document)===documentFilters.type);
+      });
       const tbl=UI.table({
-        pageSize:8, rows:DB.documentsList,
+        pageSize:8, rows:visibleDocuments, model:false,
         onRow:d=>UI.drawer({
           title:d.name,
           body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.badge(d.folder,'blue')} ${UI.badge(d.shared||'All campuses','ink')}</div>
             ${UI.dl([['File size',esc(d.size||'—')],['File type',esc(d.mimeType||'Document')],['Uploaded by',esc(d.by||'Unknown')],['Uploaded',esc(d.date||'—')],['Campus',esc(d.branchName||'All campuses')]])}
             ${d.url?`<div class="divider"></div><div style="border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center"><span class="s-ic t-blue" style="width:54px;height:54px;border-radius:16px;display:grid;place-items:center;margin:0 auto 10px">${MCIcon('file')}</span><div class="small muted">This document is stored securely in Cloudinary.</div></div>`:''}`,
-          foot:d.url?`<a class="btn btn-primary" href="${esc(d.url)}" target="_blank" rel="noopener">${MCIcon('eye')} View document</a><a class="btn btn-ghost" href="${esc(d.url)}" download>${MCIcon('download')} Download</a>`:''
+          foot:d.url?`<a class="btn btn-primary" href="${documentUrl(d,'inline')}" target="_blank" rel="noopener">${MCIcon('eye')} View document</a><a class="btn btn-ghost" href="${documentUrl(d,'attachment')}">${MCIcon('download')} Download</a>`:''
         }),
         columns:[
           {key:'name',label:'Document',render:r=>`<div class="person-cell"><span class="f-ic t-blue" style="width:36px;height:36px;border-radius:10px;display:grid;place-items:center">${MCIcon('file')}</span><div class="pc-txt"><div class="cell-main">${esc(r.name)}</div><div class="cell-sub">${r.size}</div></div></div>`},
@@ -81,7 +88,7 @@ window.Pages=window.Pages||{};
           {key:'by',label:'Owner',render:r=>UI.personCell(r.by)},
           {key:'shared',label:'Shared with'},
           {key:'date',label:'Updated'},
-          {label:'',sortable:false,render:r=>r.url?`<a class="btn btn-ghost btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener" title="View document">${MCIcon('eye')} View</a>`:''},
+          {label:'',sortable:false,render:r=>r.url?`<a class="btn btn-ghost btn-sm" href="${documentUrl(r,'inline')}" target="_blank" rel="noopener" title="View document">${MCIcon('eye')} View</a>`:''},
         ],
       });
       Pages.documents._tid=UI.lastTableId();
@@ -90,17 +97,25 @@ window.Pages=window.Pages||{};
           `<button class="btn btn-ghost" id="docFolder">${MCIcon('plus')} New Folder</button>
            <button class="btn btn-primary" id="docUp">${MCIcon('upload')} Upload</button>`)}
         <div class="grid cards-6" style="margin-bottom:20px">${folders.map(f=>`
-          <div class="card" style="padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer">
+          <button class="card" data-document-folder="${esc(f.name)}" style="padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;width:100%;border:${documentFilters.folder===f.name?'2px solid var(--blue-500)':'1px solid var(--line)'}">
             <span class="s-ic ${f.tint}" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center">${MCIcon('documents')}</span>
             <div><div style="font-weight:700;color:var(--ink-900)">${f.name}</div>
             <div class="small muted">${f.count} files</div></div>
-          </div>`).join('')}</div>
+          </button>`).join('')}</div>
         <div class="card"><div class="card-head"><div><h3>All documents</h3></div><span class="spacer"></span>
-          <div class="toolbar" style="margin:0"><div class="input-wrap" style="min-width:220px">${MCIcon('search')}<input id="dQ" placeholder="Search documents…"></div></div></div>
+          <div class="toolbar" style="margin:0;display:flex;gap:8px;flex-wrap:wrap">
+            <select id="dFolder" class="select"><option value="">All folders</option>${folderNames.map(folder=>`<option value="${esc(folder)}" ${documentFilters.folder===folder?'selected':''}>${esc(folder)}</option>`).join('')}</select>
+            <select id="dType" class="select"><option value="">All document types</option><option value="PDF" ${documentFilters.type==='PDF'?'selected':''}>PDF</option><option value="Image" ${documentFilters.type==='Image'?'selected':''}>Images</option><option value="Other" ${documentFilters.type==='Other'?'selected':''}>Other</option></select>
+            <div class="input-wrap" style="min-width:220px">${MCIcon('search')}<input id="dQ" value="${esc(documentFilters.search)}" placeholder="Search documents…"></div>
+          </div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
     },
     mount(root){
-      root.querySelector('#dQ').addEventListener('input',e=>UI.tableFilter(Pages.documents._tid,e.target.value));
+      if(documentFilters.search)UI.tableFilter(Pages.documents._tid,documentFilters.search);
+      root.querySelector('#dQ').addEventListener('input',e=>{documentFilters.search=e.target.value;UI.tableFilter(Pages.documents._tid,e.target.value);});
+      root.querySelector('#dFolder').addEventListener('change',e=>{documentFilters.folder=e.target.value;App.refresh();});
+      root.querySelector('#dType').addEventListener('change',e=>{documentFilters.type=e.target.value;App.refresh();});
+      root.querySelectorAll('[data-document-folder]').forEach(button=>button.addEventListener('click',()=>{documentFilters.folder=documentFilters.folder===button.dataset.documentFolder?'':button.dataset.documentFolder;App.refresh();}));
       root.querySelector('#docFolder').addEventListener('click',()=>UI.modal({
         title:'New Folder',
         body:`<div class="field"><label>Folder name</label><input type="text" data-f="name" placeholder="e.g. Menus"></div>`,

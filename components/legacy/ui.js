@@ -81,7 +81,7 @@
   function table(cfg){
     const id='tbl'+(++_tid);
     _tables[id]={cfg,state:{sort:null,dir:1,page:1,query:'',rows:cfg.rows,total:cfg.rows.length,
-      remoteModel:cfg.model||ROUTE_MODELS[window.App?.route]}};
+      remoteModel:cfg.model===false?null:(cfg.model||ROUTE_MODELS[window.App?.route])}};
     return `<div class="table-host" data-table-id="${id}"></div>`;
   }
   async function fetchRemoteTable(id){

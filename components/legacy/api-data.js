@@ -99,6 +99,15 @@
       );
     }
     const results = await Promise.allSettled(calls);
+    window.DB.apiHealth={
+      checkedAt:new Date().toISOString(),
+      successful:results.filter(result=>result.status==='fulfilled').length,
+      total:results.length,
+      core:results.slice(0,6).every(result=>result.status==='fulfilled'),
+      attendance:results[16]?.status==='fulfilled',
+      payments:results[21]?.status==='fulfilled',
+      events:results[3]?.status==='fulfilled',
+    };
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
     const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages] = successful;
 
@@ -122,6 +131,7 @@
         imageUrl: branch.imageUrl,
         schoolGrade: branch.schoolGrade || schoolGradeForBranch(branch.name),
         status: branch.status === 'COMING_SOON' ? 'Coming Soon' : statusLabel(branch.status),
+        createdAt: branch.createdAt || '',
         since: new Date(branch.createdAt).getFullYear().toString(),
       }));
     }
@@ -142,6 +152,7 @@
         attendance: student.attendanceRate,
         fees: '—',
         status: statusLabel(student.enrollmentStatus),
+        createdAt: student.createdAt || '',
       }));
     }
     if (parents) {
@@ -194,7 +205,16 @@
       window.DB.learnerStats=learnerStats;
       window.DB.totals.students=Number(learnerStats.totalLearners||0);
     }
-    if (attendanceStats) window.DB.attendanceStats=attendanceStats;
+    if (attendanceStats) {
+      window.DB.attendanceStats=attendanceStats;
+      const branchAttendance=Array.isArray(attendanceStats.branches)?attendanceStats.branches:[];
+      const attendanceByBranch=new Map(branchAttendance.map(row=>[String(row?.id||''),Number(row?.percentage)]));
+      const currentBranches=Array.isArray(window.DB.branches)?window.DB.branches:[];
+      currentBranches.forEach(branch=>{
+        const percentage=attendanceByBranch.get(String(branch.id));
+        branch.attendance=Number.isFinite(percentage)?Math.max(0,Math.min(100,percentage)):0;
+      });
+    }
     if (reportStats) window.DB.reportStats=reportStats;
     if (users) {
       window.DB.adminUsers=users.map((account)=>({
@@ -235,6 +255,8 @@
         parent:payment.payerName||'Parent',
         payerEmail:payment.payerEmail||'',
         child:payment.childName||'',
+        description:payment.description||'Payment',
+        paymentType:payment.paymentType||'',
         school:window.DB.SCHOOL_NAME,
         schoolId:'sch-1',
         branch:payment.branchName||'Not assigned',
@@ -274,6 +296,7 @@
         id:role.id,name:role.name,color:role.color,users:Number(role.users||0),isSystem:Boolean(role.isSystem),
         grants:permissions.map(permission=>(role.permissions||[]).includes(permission)?1:0),
       }))};
+      window.DB.roleStats=roleData.stats||{grantedPermissions:0,changesThisMonth:0};
       window.DB.currentRole=roleData.currentRole;
       window.DB.currentPermissions=roleData.currentRole?.permissions||[];
     }
@@ -299,12 +322,53 @@
         grade: application.currentGrade,
         status: statusLabel(application.status),
         date: new Date(application.createdAt).toLocaleDateString('en-ZA'),
+        createdAt: application.createdAt || '',
+        submittedAt: application.submittedAt || '',
+        approvedAt: application.approvedAt || '',
         docs: application.documentCount,
         consentSignedCount: Number(application.consentSignedCount || 0),
         consentFormsComplete: Number(application.consentSignedCount || 0) >= 5,
         lastConsentSignedAt: application.lastConsentSignedAt || '',
       }));
+      const waitlisted = applications
+        .filter((application) => application.status === 'WAITLISTED')
+        .map((application) => ({
+          id: application.id,
+          applicationId: application.id,
+          reference: application.reference,
+          child: application.childName,
+          parent: application.parentName,
+          school: window.DB.SCHOOL_NAME,
+          schoolId: 'sch-1',
+          branch: application.branchName || application.preferences?.branchName || 'Not assigned',
+          branchId: application.branchId || application.preferences?.branchId || '',
+          grade: application.currentGrade,
+          waitlistedAt: application.waitlistedAt || application.submittedAt || application.createdAt,
+          priority: application.waitingListPriority || 'Standard',
+        }))
+        .sort((left, right) => {
+          const priority = Number(right.priority === 'Sibling') - Number(left.priority === 'Sibling');
+          if (priority) return priority;
+          return new Date(left.waitlistedAt).getTime() - new Date(right.waitlistedAt).getTime();
+        })
+        .map((item, index) => ({ ...item, position: index + 1 }));
+      const now = new Date();
+      const placedThisMonth = applications.filter((application) => {
+        if (!application.approvedAt || !['APPROVED', 'ENROLLED'].includes(application.status)) return false;
+        const approvedAt = new Date(application.approvedAt);
+        return approvedAt.getFullYear() === now.getFullYear() && approvedAt.getMonth() === now.getMonth();
+      }).length;
+      const averageWaitDays = waitlisted.length
+        ? waitlisted.reduce((total, item) => total + Math.max(0, (now.getTime() - new Date(item.waitlistedAt).getTime()) / 86400000), 0) / waitlisted.length
+        : 0;
+      window.DB.waitingList = waitlisted;
+      window.DB.waitingListStats = {
+        placedThisMonth,
+        averageWaitWeeks: averageWaitDays / 7,
+      };
       window.DB.counters.pendingReview = applications.filter((item) => item.status === 'PENDING_REVIEW').length;
+      const applicationStatuses=['PENDING_REVIEW','DOCUMENTS_REQUIRED','INTERVIEW_SCHEDULED','APPROVED','REJECTED'];
+      window.DB.appCounts=applicationStatuses.map(status=>applications.filter(item=>item.status===status).length);
     }
     if (deregistrations) {
       window.DB.deregistrations = deregistrations.map((item) => ({
@@ -380,7 +444,7 @@
     // modal edits are authoritative so a reload cannot undo a saved action.
     if (stored?.data?.state) {
       Object.entries(stored.data.state).forEach(([key, value]) => {
-        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','payments','invoices','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
+        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','waitingList','payments','invoices','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
       });
     }
     // Saved control-centre state may predate the Mobsie Connect rename.

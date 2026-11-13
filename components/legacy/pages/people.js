@@ -103,8 +103,8 @@ window.Pages=window.Pages||{};
            <button class="btn btn-primary" id="lEnrol">${MCIcon('plus')} Enrol Learner</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
           ${UI.statCard({icon:'learners',tint:'t-purple',label:'Total Learners',value:F(Number(stats.totalLearners||0)),deltaHtml:`<span class="delta flat">${F(Number(stats.addedThisMonth||0))} added this month</span>`})}
-          ${UI.statCard({icon:'check',tint:'t-green',label:'Enrolled & Active',value:Number(stats.activePercentage||0).toFixed(1).replace('.0','')+'%',deltaHtml:`<span class="delta flat">${F(Number(stats.activeLearners||0))} active learners</span>`})}
-          ${UI.statCard({icon:'attendance',tint:'t-orange',label:'Avg Attendance',value:attendance.entries?Number(attendance.percentage||0).toFixed(1).replace('.0','')+'%':'—',deltaHtml:`<span class="delta flat">${attendance.entries?F(Number(attendance.entries))+' entries this month':'no attendance captured'}</span>`})}
+          ${UI.statCard({icon:'check',tint:'t-green',label:'Enrolled & Active',value:DB.safeNumber(stats.activePercentage).toFixed(1).replace('.0','')+'%',deltaHtml:`<span class="delta flat">${F(stats.activeLearners)} active learners</span>`})}
+          ${UI.statCard({icon:'attendance',tint:'t-orange',label:'Avg Attendance',value:attendance.entries?DB.safeNumber(attendance.percentage).toFixed(1).replace('.0','')+'%':'—',deltaHtml:`<span class="delta flat">${attendance.entries?F(attendance.entries)+' entries this month':'no attendance captured'}</span>`})}
           ${UI.statCard({icon:'payments',tint:'t-blue',label:'Fees Collected',value:feeRate===null?'—':feeRate+'%',deltaHtml:`<span class="delta flat">${linkedInvoices.length?F(paidInvoices.length)+' of '+F(linkedInvoices.length)+' invoices paid':'no linked invoices'}</span>`})}
         </div>
         <div class="card">
@@ -274,11 +274,11 @@ window.Pages=window.Pages||{};
       const owing=rows.filter(p=>p.balance>0);
       const stats=DB.parentStats||{};
       const totalParents=rows.length;
-      const newThisMonth=Number(stats.newThisMonth??0);
-      const adoption=Number(stats.appAdoptionPercent??0);
-      const arrears=Number(stats.accountsInArrears??owing.length);
-      const ratingCount=Number(stats.ratingCount??0);
-      const rating=stats.averageRating==null?'—':Number(stats.averageRating).toFixed(1)+'/5';
+      const newThisMonth=DB.safeNumber(stats.newThisMonth);
+      const adoption=DB.safeNumber(stats.appAdoptionPercent);
+      const arrears=stats.accountsInArrears==null?owing.length:DB.safeNumber(stats.accountsInArrears);
+      const ratingCount=DB.safeNumber(stats.ratingCount);
+      const rating=stats.averageRating==null?'—':DB.safeNumber(stats.averageRating).toFixed(1)+'/5';
       const tbl=UI.table({
         pageSize:10, rows, onRow:openParent,
         columns:[
@@ -424,11 +424,11 @@ window.Pages=window.Pages||{};
     render(){
       const rows=App.scoped(DB.teachers);
       const stats=DB.teamStats||{};
-      const totalStaff=Number(stats.totalStaff??rows.length);
-      const newThisMonth=Number(stats.newThisMonth??0);
-      const learnersPerStaff=Number(stats.learnersPerStaff??0);
-      const averageExperience=Number(stats.averageExperienceYears??0);
-      const attendanceEntries=Number(stats.attendanceEntriesThisMonth??0);
+      const totalStaff=stats.totalStaff==null?rows.length:DB.safeNumber(stats.totalStaff);
+      const newThisMonth=DB.safeNumber(stats.newThisMonth);
+      const learnersPerStaff=DB.safeNumber(stats.learnersPerStaff);
+      const averageExperience=DB.safeNumber(stats.averageExperienceYears);
+      const attendanceEntries=DB.safeNumber(stats.attendanceEntriesThisMonth);
       const tbl=UI.table({
         pageSize:10, rows, onRow:openTeacher,
         columns:[

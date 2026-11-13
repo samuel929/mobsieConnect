@@ -1473,6 +1473,10 @@ Pages.messages = {
   /* ---------- Push notifications ---------- */
   Pages.push={
     render(){
+      const openRate=(openedCount,deliveredCount)=>{
+        const deliveredValue=DB.safeNumber(deliveredCount);
+        return deliveredValue?Math.round(DB.safeNumber(openedCount)/deliveredValue*100):0;
+      };
       const delivered=DB.pushLog.reduce((sum,n)=>sum+Number(n.delivered||0),0);
       const opened=DB.pushLog.reduce((sum,n)=>sum+Number(n.opened||0),0);
       const deliveredRows=DB.pushLog.filter(n=>String(n.status).toLowerCase()==='delivered');
@@ -1481,14 +1485,14 @@ Pages.messages = {
         onRow:n=>UI.drawer({
           title:n.title,
           body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.status(n.status)} ${UI.badge(n.audience||'All campuses','orange')}</div>
-            ${UI.dl([['Sent / scheduled',esc(n.time||'—')],['Delivered',F(Number(n.delivered||0))],['Opened',F(Number(n.opened||0))],['Open rate',n.delivered?Math.round(n.opened/n.delivered*100)+'%':'—']])}
+            ${UI.dl([['Sent / scheduled',esc(n.time||'—')],['Delivered',F(n.delivered)],['Opened',F(n.opened)],['Open rate',openRate(n.opened,n.delivered)+'%']])}
             <div class="divider"></div><h4 style="margin:0 0 8px">Notification message</h4><div style="white-space:pre-wrap;line-height:1.65;color:var(--ink-700)">${esc(n.body||n.message||n.title)}</div>`
         }),
         columns:[
           {key:'title',label:'Notification',render:r=>`<div class="cell-main">${esc(r.title)}</div><div class="cell-sub">${esc(r.audience)}</div>`},
           {key:'time',label:'Sent'},
           {key:'delivered',label:'Delivered',num:true,render:r=>F(r.delivered)},
-          {key:'opened',label:'Opened',num:true,render:r=>`${F(r.opened)} <span class="muted">(${Math.round(r.opened/r.delivered*100)}%)</span>`},
+          {key:'opened',label:'Opened',num:true,render:r=>`${F(r.opened)} <span class="muted">(${openRate(r.opened,r.delivered)}%)</span>`},
           {key:'status',label:'Status',render:r=>UI.status(r.status)},
         ],
       });

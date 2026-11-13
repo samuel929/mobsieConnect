@@ -191,7 +191,7 @@ export default apiHandler<unknown>(
          JOIN application_preferences ap ON ap.application_id = a.id
          WHERE a.tenant_id = b.tenant_id
            AND ap.branch_id = b.id
-           AND a.status NOT IN ('DRAFT', 'REJECTED')) AS "learnerCount",
+           AND a.status IN ('APPROVED', 'ENROLLED')) AS "learnerCount",
         (SELECT count(*)::int
          FROM team_members tm
          WHERE tm.tenant_id = b.tenant_id AND tm.branch_id = b.id) AS "teacherCount",

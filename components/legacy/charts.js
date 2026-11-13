@@ -5,13 +5,14 @@
   const SURF='#FFFFFF', GRID='#EEF1F6', TICK='#94A3B8';
   const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   const tip=o=>esc(encodeURIComponent(JSON.stringify(o)));
+  const num=value=>{const number=Number(value);return Number.isFinite(number)?number:0;};
 
   function niceMax(v){
     const p=Math.pow(10,Math.floor(Math.log10(v||1)));
     for(const m of [1,1.5,2,2.5,3,4,5,6,8,10]) if(m*p>=v) return m*p;
     return 10*p;
   }
-  const fmtTick=v=>v>=1e6?'R'+(v/1e6).toFixed(v%1e6?1:0)+'M':v>=1e3?(v/1e3)+'K':String(v);
+  const fmtTick=value=>{const v=num(value);return v>=1e6?'R'+(v/1e6).toFixed(v%1e6?1:0)+'M':v>=1e3?(v/1e3)+'K':String(v);};
 
   /* ---- Multi-series line chart with area wash + hover columns ---- */
   function line(opts){
@@ -55,19 +56,19 @@
   function donut(opts){
     const {segments,size=210,thick=30,centre,centreSub}=opts;
     const R=(size-thick)/2-2, C=size/2;
-    const total=segments.reduce((a,s)=>a+s.value,0)||1;
+    const total=segments.reduce((a,s)=>a+num(s.value),0)||1;
     const padDeg=2.6;
     let a=-90, arcs='';
     segments.forEach(s=>{
-      const sweep=s.value/total*360;
+      const value=num(s.value), sweep=value/total*360;
       const a0=a+padDeg/2, a1=a+sweep-padDeg/2; a+=sweep;
       if(a1<=a0) return;
       const r0=(a0*Math.PI)/180, r1=(a1*Math.PI)/180;
       const x0=C+R*Math.cos(r0), y0=C+R*Math.sin(r0);
       const x1=C+R*Math.cos(r1), y1=C+R*Math.sin(r1);
       const lg=(a1-a0)>180?1:0;
-      const pc=Math.round(s.value/total*1000)/10;
-      arcs+=`<path class="ct-hit" data-tip="${tip({h:s.label,rows:[{c:s.color,l:'Count',v:String(s.value)},{c:s.color,l:'Share',v:pc+'%'}]})}" d="M${x0.toFixed(2)},${y0.toFixed(2)} A${R},${R} 0 ${lg} 1 ${x1.toFixed(2)},${y1.toFixed(2)}" fill="none" stroke="${s.color}" stroke-width="${thick}" stroke-linecap="butt"/>`;
+      const pc=Math.round(value/total*1000)/10;
+      arcs+=`<path class="ct-hit" data-tip="${tip({h:s.label,rows:[{c:s.color,l:'Count',v:String(value)},{c:s.color,l:'Share',v:pc+'%'}]})}" d="M${x0.toFixed(2)},${y0.toFixed(2)} A${R},${R} 0 ${lg} 1 ${x1.toFixed(2)},${y1.toFixed(2)}" fill="none" stroke="${s.color}" stroke-width="${thick}" stroke-linecap="butt"/>`;
     });
     const c1=centre!=null?`<text x="${C}" y="${C-2}" text-anchor="middle" font-size="26" font-weight="800" fill="#0F172A">${esc(centre)}</text>`:'';
     const c2=centreSub?`<text x="${C}" y="${C+18}" text-anchor="middle" font-size="11.5" fill="${TICK}">${esc(centreSub)}</text>`:'';
@@ -78,13 +79,13 @@
   function ring(opts){
     const {pct,size=120,thick=11,color='#16A34A',track='#DCFCE7',label}=opts;
     const R=(size-thick)/2, C=size/2, circ=2*Math.PI*R;
-    const off=circ*(1-pct/100);
+    const safePct=Math.max(0,Math.min(100,num(pct))), off=circ*(1-safePct/100);
     return `<svg viewBox="0 0 ${size} ${size}" role="img">
       <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${track}" stroke-width="${thick}"/>
       <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${color}" stroke-width="${thick}"
         stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"
         transform="rotate(-90 ${C} ${C})"/>
-      <text x="${C}" y="${C+7}" text-anchor="middle" font-size="${size/4.6}" font-weight="800" fill="#0F172A">${esc(label!=null?label:pct+'%')}</text>
+      <text x="${C}" y="${C+7}" text-anchor="middle" font-size="${size/4.6}" font-weight="800" fill="#0F172A">${esc(label!=null?label:safePct+'%')}</text>
     </svg>`;
   }
 
@@ -141,16 +142,16 @@
   /* ---- Ordinal funnel (single hue, monotone lightness) ---- */
   function funnel(opts){
     const {stages,ramp=['#7C2D12','#C2410C','#EA580C','#F97316','#FB923C']}=opts;
-    const max=stages[0].value||1;
+    const max=num(stages[0]?.value)||1;
     let rows='';
     stages.forEach((s,i)=>{
-      const w=Math.max(8,Math.round(s.value/max*100));
+      const value=num(s.value), w=Math.max(8,Math.round(value/max*100));
       const col=ramp[Math.min(i,ramp.length-1)];
-      rows+=`<div class="fn-row ct-hit" data-tip="${tip({h:s.label,rows:[{c:col,l:'Count',v:s.value.toLocaleString('en-ZA')},{c:col,l:'Conversion',v:Math.round(s.value/max*100)+'%'}]})}" style="display:flex;align-items:center;gap:12px;padding:5px 0">
+      rows+=`<div class="fn-row ct-hit" data-tip="${tip({h:s.label,rows:[{c:col,l:'Count',v:value.toLocaleString('en-ZA')},{c:col,l:'Conversion',v:Math.round(value/max*100)+'%'}]})}" style="display:flex;align-items:center;gap:12px;padding:5px 0">
         <div style="width:128px;font-size:12.5px;font-weight:600;color:#475569;flex-shrink:0">${esc(s.label)}</div>
         <div style="flex:1;height:26px;border-radius:8px;background:#F1F5F9;overflow:hidden">
           <div style="width:${w}%;height:100%;border-radius:8px;background:${col}"></div></div>
-        <div style="width:56px;text-align:right;font-size:13px;font-weight:700;color:#0F172A;font-variant-numeric:tabular-nums;flex-shrink:0">${s.value.toLocaleString('en-ZA')}</div></div>`;
+        <div style="width:56px;text-align:right;font-size:13px;font-weight:700;color:#0F172A;font-variant-numeric:tabular-nums;flex-shrink:0">${value.toLocaleString('en-ZA')}</div></div>`;
     });
     return `<div>${rows}</div>`;
   }

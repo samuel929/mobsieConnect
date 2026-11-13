@@ -33,7 +33,7 @@ async function ensureRoles(tenantId: string) {
   });
 }
 
-const createSchema=z.object({name:z.string().trim().min(2).max(80),baseRoleId:z.uuid()});
+const createSchema=z.object({name:z.string().trim().min(2).max(80),baseRoleId:z.uuid(),color:z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#0D9488")});
 const updateSchema=z.object({roleId:z.uuid(),permission:z.enum(PERMISSIONS),granted:z.boolean()});
 
 export default apiHandler<unknown>({methods:["GET","POST","PUT"],roles:["PRINCIPAL","TEACHER"]},async(req,res,{user})=>{
@@ -45,10 +45,18 @@ export default apiHandler<unknown>({methods:["GET","POST","PUT"],roles:["PRINCIP
     const input=createSchema.parse(req.body);
     const base=await query<{id:string}>("SELECT id FROM dashboard_roles WHERE id=$1 AND tenant_id=$2",[input.baseRoleId,principal.tenantId]);
     if(!base.rows[0])throw new AppError(404,"ROLE_NOT_FOUND","The starting role no longer exists.");
-    const created=await query<{id:string}>(`INSERT INTO dashboard_roles(tenant_id,name) VALUES($1,$2) RETURNING id`,[principal.tenantId,input.name]);
-    await query(`INSERT INTO dashboard_role_permissions(role_id,permission_key,granted)
-      SELECT $1,permission_key,granted FROM dashboard_role_permissions WHERE role_id=$2`,[created.rows[0].id,input.baseRoleId]);
-    res.status(201).json({ok:true,data:{id:created.rows[0].id}});return;
+    const duplicate=await query("SELECT 1 FROM dashboard_roles WHERE tenant_id=$1 AND lower(name)=lower($2)",[principal.tenantId,input.name]);
+    if(duplicate.rows[0])throw new AppError(409,"ROLE_EXISTS","A role with that name already exists.");
+    const created=await withTransaction(async client=>{
+      const role=await client.query<{id:string;name:string;color:string}>(`INSERT INTO dashboard_roles(tenant_id,name,color) VALUES($1,$2,$3) RETURNING id,name,color`,[principal.tenantId,input.name,input.color]);
+      await client.query(`INSERT INTO dashboard_role_permissions(role_id,permission_key,granted)
+        SELECT $1,permission_key,granted FROM dashboard_role_permissions WHERE role_id=$2`,[role.rows[0].id,input.baseRoleId]);
+      await client.query(`INSERT INTO audit_log(tenant_id,actor_id,action,entity_type,metadata)
+        VALUES($1,$2,'dashboard_role_created','dashboard_role',$3::jsonb)`,[principal.tenantId,principal.id,JSON.stringify({roleId:role.rows[0].id,name:input.name,baseRoleId:input.baseRoleId})]);
+      return role.rows[0];
+    });
+    const permissions=await query<{permission:string}>(`SELECT permission_key AS permission FROM dashboard_role_permissions WHERE role_id=$1 AND granted ORDER BY permission_key`,[created.id]);
+    res.status(201).json({ok:true,data:{...created,isSystem:false,users:0,permissions:permissions.rows.map(row=>row.permission)}});return;
   }
   if(req.method==="PUT"){
     if(principal.role!=="PRINCIPAL")throw new AppError(403,"FORBIDDEN","Only principals can change permissions.");
@@ -56,8 +64,13 @@ export default apiHandler<unknown>({methods:["GET","POST","PUT"],roles:["PRINCIP
     const input=updateSchema.parse(req.body);
     const role=await query("SELECT 1 FROM dashboard_roles WHERE id=$1 AND tenant_id=$2",[input.roleId,principal.tenantId]);
     if(!role.rows[0])throw new AppError(404,"ROLE_NOT_FOUND","That role no longer exists.");
-    await query(`INSERT INTO dashboard_role_permissions(role_id,permission_key,granted) VALUES($1,$2,$3)
-      ON CONFLICT(role_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,updated_at=now()`,[input.roleId,input.permission,input.granted]);
+    await withTransaction(async client=>{
+      await client.query(`INSERT INTO dashboard_role_permissions(role_id,permission_key,granted) VALUES($1,$2,$3)
+        ON CONFLICT(role_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,updated_at=now()`,[input.roleId,input.permission,input.granted]);
+      await client.query(`UPDATE dashboard_roles SET updated_at=now() WHERE id=$1`,[input.roleId]);
+      await client.query(`INSERT INTO audit_log(tenant_id,actor_id,action,entity_type,metadata)
+        VALUES($1,$2,'dashboard_permission_changed','dashboard_role',$3::jsonb)`,[principal.tenantId,principal.id,JSON.stringify(input)]);
+    });
     res.status(200).json({ok:true,data:{...input}});return;
   }
   const roles=await query<{id:string;name:string;color:string;isSystem:boolean;users:number;permissions:string[]}>(`SELECT r.id,r.name,r.color,r.is_system AS "isSystem",
@@ -73,5 +86,9 @@ export default apiHandler<unknown>({methods:["GET","POST","PUT"],roles:["PRINCIP
     await query(`INSERT INTO user_dashboard_roles(user_id,role_id) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING`,[principal.id,fallback.id]);
     currentRole={id:fallback.id,name:fallback.name,permissions:fallback.permissions};
   }
-  res.status(200).json({ok:true,data:{permissions:[...PERMISSIONS],roles:roles.rows,currentRole}});
+  const changes=await query<{count:number}>(`SELECT COUNT(*)::int AS count FROM audit_log
+    WHERE tenant_id=$1 AND entity_type='dashboard_role' AND created_at>=date_trunc('month',now())`,[principal.tenantId]);
+  const grantedPermissions=roles.rows.reduce((total,role)=>total+role.permissions.length,0);
+  res.status(200).json({ok:true,data:{permissions:[...PERMISSIONS],roles:roles.rows,currentRole,
+    stats:{grantedPermissions,changesThisMonth:Number(changes.rows[0]?.count||0)}}});
 });
