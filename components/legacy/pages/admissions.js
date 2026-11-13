@@ -14,6 +14,20 @@ window.Pages=window.Pages||{};
     ['MEDICAL_AID','Medical aid copy',false],
   ];
   const stageOptions=[['STAGE_1','Stage 1 · Baby class'],['STAGE_2','Stage 2 · Toddler class'],['STAGE_3','Stage 3'],['STAGE_4','Stage 4 · Grade 0'],['GRADE_R','Grade R']];
+  const stageLabels=Object.fromEntries(stageOptions);
+  const branchFees2027={
+    mamelodi:{application:95000,monthly:{STAGE_1:150000,STAGE_2:130000,STAGE_3:130000,STAGE_4:110000,GRADE_R:110000},annual:{STAGE_1:1450000,STAGE_2:1285000,STAGE_3:1285000,STAGE_4:1050000,GRADE_R:1050000},sibling:{STAGE_1:135000,STAGE_2:120000,STAGE_3:120000,STAGE_4:100000,GRADE_R:100000}},
+    soshanguve:{application:95000,monthly:{STAGE_1:220000,STAGE_2:220000,STAGE_3:210000,STAGE_4:210000,GRADE_R:205000},annual:{STAGE_1:2180000,STAGE_2:2180000,STAGE_3:2105000,STAGE_4:2105000,GRADE_R:2100000},sibling:{STAGE_1:205000,STAGE_2:205000,STAGE_3:195000,STAGE_4:195000,GRADE_R:190000}},
+    hebron:{application:95000,monthly:{STAGE_1:120000,STAGE_2:110000,STAGE_3:110000,STAGE_4:100000,GRADE_R:100000},annual:{STAGE_1:1150000,STAGE_2:1050000,STAGE_3:1050000,STAGE_4:950000,GRADE_R:950000},sibling:{STAGE_1:105000,STAGE_2:95000,STAGE_3:95000,STAGE_4:85000,GRADE_R:85000}}
+  };
+  const fallbackFees={PRIVATE_PRESCHOOL:{application:50000,acceptance:130000,monthly:{STAGE_1:185000,STAGE_2:185000,STAGE_3:175000,STAGE_4:170000,GRADE_R:170000}},CHILD_DAY_CARE:{application:95000,acceptance:0,monthly:{STAGE_1:100000,STAGE_2:95000,STAGE_3:95000,STAGE_4:90000,GRADE_R:90000}},NPO_PRESCHOOL:{application:55000,acceptance:0,monthly:{STAGE_1:85000,STAGE_2:80000,STAGE_3:80000,STAGE_4:75000,GRADE_R:75000}}};
+  const aftercareFees={AD_HOC:{label:'Ad-hoc aftercare',description:'R 50,00 / 30 min or R 80,00 / hour · paid directly to teachers',monthly:0},FULL_TIME:{label:'Full-time aftercare',description:'17:00–18:00',monthly:70000},PRIMARY_SCHOOL:{label:'Primary School aftercare',description:'Includes lunch and homework assistance',monthly:80000}};
+  const transportFees=[['Ext 1',80000,145000],['Ext 2',90000,160000],['Ext 10',90000,160000],['Block VV',55000,95000],['Block L, K, M',70000,125000],['Block XX',70000,125000],['Mabopane',90000,165000],['Itsoseng',95000,175000],['Hebron',100000,180000],['Block H',95000,175000],['Extension',80000,145000],['Block UU, WW',65000,120000]];
+  const cents=value=>new Intl.NumberFormat('en-ZA',{style:'currency',currency:'ZAR'}).format((Number(value)||0)/100);
+  const normalizedBranch=value=>String(value||'').toLowerCase().replace(/[^a-z]/g,'');
+  const schoolTypeForBranch=name=>normalizedBranch(name).includes('soshanguve')?'PRIVATE_PRESCHOOL':'CHILD_DAY_CARE';
+  const feeFor=(branchName,schoolType,stage)=>{const branch=normalizedBranch(branchName);const key=Object.keys(branchFees2027).find(name=>branch.includes(name));const official=key?branchFees2027[key]:null;const fallback=fallbackFees[schoolType]||fallbackFees.CHILD_DAY_CARE;return{year:official?2027:2026,application:official?.application??fallback.application,acceptance:official?0:fallback.acceptance,monthly:official?.monthly[stage]??fallback.monthly[stage]??0,annual:official?.annual[stage]??null,sibling:official?.sibling[stage]??null};};
+  const comparablePhone=value=>{const digits=String(value||'').replace(/\D/g,'');return digits.length>=9?digits.slice(-9):digits;};
   const stageForDateOfBirth=value=>{const birth=new Date(`${value}T00:00:00Z`);if(Number.isNaN(birth.getTime()))return'';const today=new Date();let months=(today.getUTCFullYear()-birth.getUTCFullYear())*12+today.getUTCMonth()-birth.getUTCMonth();if(today.getUTCDate()<birth.getUTCDate())months--;return months<6||months>=84?'':months<24?'STAGE_1':months<36?'STAGE_2':months<48?'STAGE_3':months<60?'STAGE_4':'GRADE_R';};
   const readApplicationFile=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error(`Could not read ${file.name}.`));reader.readAsDataURL(file);});
 
@@ -1050,6 +1064,12 @@ function formatDocumentSize(bytes) {
             <div class="form-row"><div class="field"><label>Application type</label><select data-f="applicationType"><option value="NEW">New application</option><option value="REREGISTRATION">Re-registration</option></select></div><div class="field"><label>Relationship</label><select data-f="relationship"><option>Mother</option><option>Father</option><option>Guardian</option><option>Other</option></select></div></div>
             <div class="field"><label>Parent / guardian full name</label><input data-f="parentName" placeholder="Full name"></div>
             <div class="form-row"><div class="field"><label>Parent email</label><input type="email" data-f="parentEmail" placeholder="parent@email.com"></div><div class="field"><label>Parent phone</label><input type="tel" data-f="parentPhone" placeholder="082 555 0182"></div></div>
+            <label class="application-consent"><input type="checkbox" data-additional-guardian> Add another guardian (if applicable)</label>
+            <div data-additional-guardian-fields hidden>
+              <div class="field"><label>Additional guardian full name</label><input data-f="additionalGuardianName" placeholder="Full name"></div>
+              <div class="form-row"><div class="field"><label>Relationship</label><select data-f="additionalGuardianRelationship"><option value="Mother">Mother</option><option value="Father">Father</option><option value="Guardian">Guardian</option></select></div><div class="field"><label>Email</label><input type="email" data-f="additionalGuardianEmail" placeholder="guardian@email.com"></div></div>
+              <div class="field"><label>Phone</label><input type="tel" data-f="additionalGuardianPhone" placeholder="082 555 0182"></div>
+            </div>
           </div>
           <div class="people-edit-form__section"><div class="people-edit-form__section-title">Child details</div>
             <div class="field"><label>Child’s full name</label><input data-f="childName" placeholder="Full name"></div>
@@ -1059,10 +1079,14 @@ function formatDocumentSize(bytes) {
           </div>
           <div class="people-edit-form__section"><div class="people-edit-form__section-title">School preferences</div>
             <div class="form-row"><div class="field"><label>Preferred branch</label><select data-f="branchId"><option value="">Select a branch</option>${DB.liveBranches().map(b=>`<option value="${esc(b.id)}">${esc(b.name)} — ${esc(b.schoolGrade||schoolGradeOf(b.name))}</option>`).join('')}</select></div><div class="field"><label>Why this branch?</label><select data-f="reason"><option value="">Select a reason</option><option value="CLOSE_TO_HOME">Close to home</option><option value="CLOSE_TO_WORK">Close to work</option><option value="CONVENIENT">Convenient location</option><option value="AFFORDABLE">Affordable fees</option><option value="RECOMMENDED">Recommended</option><option value="REPUTATION">School reputation and programme</option><option value="OTHER">Other</option></select></div></div>
-            <div class="form-row"><div class="field"><label>Type of school</label><select data-f="schoolType"><option value="PRIVATE_PRESCHOOL">Private Preschool</option><option value="CHILD_DAY_CARE">Child Day Care</option><option value="NPO_PRESCHOOL">NPO Preschool</option></select></div><div class="field"><label>School stage</label><select data-f="schoolStage">${stageOptions.map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select></div></div>
+            <div class="form-row"><div class="field"><label>Type of school</label><select data-f="schoolType"><option value="PRIVATE_PRESCHOOL">Grade A School</option><option value="CHILD_DAY_CARE">Grade B School</option></select><small class="muted">Assigned automatically from the selected branch.</small></div><div class="field"><label>School stage</label><select data-f="schoolStage">${stageOptions.map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select><small class="muted">Matched to the child’s verified age.</small></div></div>
+            <div class="application-fee-preview" data-fee-preview></div>
             <div class="form-row"><div class="field"><label>Preferred start date</label><input type="date" data-f="preferredStartDate"></div><div class="field"><label>Attendance option</label><select data-f="enrollmentType"><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option></select></div></div>
-            <div class="form-row"><div class="field"><label>Aftercare</label><select data-f="aftercareRequested"><option value="false">No aftercare</option><option value="true">Include aftercare</option></select></div><div class="field"><label>Attended preschool?</label><select data-f="attendedPreschool"><option value="false">No</option><option value="true">Yes</option></select></div></div>
-            <div class="form-row"><div class="field"><label>Previous school name</label><input data-f="previousSchool"></div><div class="field"><label>Previous school phone</label><input type="tel" data-f="previousSchoolPhone"></div></div>
+            <div class="form-row"><div class="field"><label>Aftercare (optional)</label><select data-f="aftercareRequested"><option value="false">No aftercare</option><option value="true">Yes, include aftercare</option></select></div><div class="field"><label>Transport (optional)</label><select data-f="transportRequested"><option value="false">No transport required</option><option value="true">Yes, choose transport</option></select></div></div>
+            <div data-aftercare-fields hidden><div class="field"><label>Choose an aftercare option</label><select data-f="aftercareOption"><option value="">Select aftercare</option>${Object.entries(aftercareFees).map(([value,item])=>`<option value="${value}">${esc(item.label)} · ${esc(item.description)}${item.monthly?` · ${cents(item.monthly)} / month`:''}</option>`).join('')}</select></div></div>
+            <div data-transport-fields hidden><div class="field"><label>Choose a transport location</label><select data-f="transportRoute"><option value="">Select a route</option>${transportFees.map(([location,monthly,sibling])=>`<option value="${esc(location)}">${esc(location)} · ${cents(monthly)} / month · sibling ${cents(sibling)}</option>`).join('')}</select><small class="muted" data-transport-note>Official routes are currently available for Soshanguve branches.</small></div></div>
+            <div class="field"><label>Has the child attended this school before?</label><select data-f="attendedPreschool"><option value="false">No</option><option value="true">Yes</option></select></div>
+            <div class="form-row" data-previous-school-fields hidden><div class="field"><label>Previous school name</label><input data-f="previousSchool"></div><div class="field"><label>Previous school phone</label><input type="tel" data-f="previousSchoolPhone"></div></div>
             <div class="field"><label>How did they hear about Mobsie?</label><select data-f="referralSource"><option value="">Select a source</option><option value="SOCIAL_MEDIA">Social media</option><option value="WORD_OF_MOUTH">Word of mouth</option><option value="RADIO">Radio</option><option value="STREET_BOARDS">Street boards</option><option value="WEBSITE">Website</option><option value="VEHICLE_BRANDING">Vehicle branding</option><option value="OTHER">Other</option></select></div>
           </div>
           <div class="people-edit-form__section"><div class="people-edit-form__section-title">Medical, emergency and fee payer</div>
@@ -1070,6 +1094,7 @@ function formatDocumentSize(bytes) {
             <div class="form-row"><div class="field"><label>Emergency contact name</label><input data-f="emergencyContactName"></div><div class="field"><label>Emergency contact phone</label><input type="tel" data-f="emergencyContactPhone"></div></div>
             <div class="form-row"><div class="field"><label>Fee payer first name</label><input data-f="feePayerFirstName"></div><div class="field"><label>Fee payer surname</label><input data-f="feePayerLastName"></div></div>
             <label class="application-consent"><input type="checkbox" data-consent="feePayerTermsAccepted"> I am responsible for school fees and accept the fee-payer terms.</label>
+            <div class="application-payment-summary" data-payment-summary></div>
           </div>
           <div class="people-edit-form__section"><div class="people-edit-form__section-title">Required documents</div>
             <p class="small muted">PDF, JPG or PNG · maximum 8 MB per file.</p>
@@ -1077,7 +1102,7 @@ function formatDocumentSize(bytes) {
           </div>
           <div class="people-edit-form__section"><div class="people-edit-form__section-title">Terms and consent</div>
             <div class="application-consents">
-              <label class="application-consent"><input type="checkbox" data-consent="photoConsent"> I consent to photographs for school activities and parent communications.</label>
+              <div class="field"><label>Photography and media consent</label><select data-f="photoConsent"><option value="true">Yes, consent is given</option><option value="false">No, consent is not given</option></select></div>
               <label class="application-consent"><input type="checkbox" data-consent="informationAccurate"> I confirm that all information is accurate.</label>
               <label class="application-consent"><input type="checkbox" data-consent="privacyAccepted"> I accept the privacy policy.</label>
               <label class="application-consent"><input type="checkbox" data-consent="termsAccepted"> I accept the application terms and conditions.</label>
@@ -1088,45 +1113,88 @@ function formatDocumentSize(bytes) {
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Create Application</button>`,
         mount(r,close){
           const dateInput=r.querySelector('[data-f="childDateOfBirth"]');
-          dateInput.addEventListener('change',()=>{const stage=stageForDateOfBirth(dateInput.value);if(stage){r.querySelector('[data-f="currentGrade"]').value=stage;r.querySelector('[data-f="schoolStage"]').value=stage;}});
+          const field=name=>r.querySelector(`[data-f="${name}"]`);
+          const updateConditionalFields=()=>{
+            r.querySelector('[data-additional-guardian-fields]').hidden=!r.querySelector('[data-additional-guardian]').checked;
+            r.querySelector('[data-aftercare-fields]').hidden=field('aftercareRequested').value!=='true';
+            const wantsTransport=field('transportRequested').value==='true';
+            r.querySelector('[data-transport-fields]').hidden=!wantsTransport;
+            r.querySelector('[data-previous-school-fields]').hidden=field('attendedPreschool').value!=='true';
+          };
+          const updatePricing=()=>{
+            const branch=DB.branches.find(item=>String(item.id)===String(field('branchId').value));
+            const branchName=branch?.name||'';
+            const schoolType=schoolTypeForBranch(branchName);
+            field('schoolType').value=schoolType;
+            field('schoolType').disabled=Boolean(branch);
+            const stage=field('schoolStage').value;
+            const price=feeFor(branchName,schoolType,stage);
+            const aftercare=field('aftercareRequested').value==='true'?aftercareFees[field('aftercareOption').value]:null;
+            const transport=field('transportRequested').value==='true'?transportFees.find(item=>item[0]===field('transportRoute').value):null;
+            const finalMonthly=price.monthly+(aftercare?.monthly||0)+(transport?.[1]||0);
+            const registrationWaived=field('applicationType').value==='REREGISTRATION';
+            const grade=schoolType==='PRIVATE_PRESCHOOL'?'Grade A School':'Grade B School';
+            r.querySelector('[data-fee-preview]').innerHTML=branch?`<div class="application-fee-preview__heading"><strong>${price.year} Fee Structure</strong><span>${esc(grade)} · ${esc(stageLabels[stage]||stage)}</span></div><div class="application-fee-preview__grid"><span>Application fee <b>${cents(price.application)}</b></span><span>Monthly fee <b>${cents(price.monthly)}</b></span>${price.annual!==null?`<span>Annual discounted (11 months) <b>${cents(price.annual)}</b></span>`:''}${price.sibling!==null?`<span>Sibling monthly (11 months) <b>${cents(price.sibling)}</b></span>`:''}</div>`:'<div class="small muted">Select a preferred branch to view its fee structure.</div>';
+            r.querySelector('[data-payment-summary]').innerHTML=branch?`<div class="application-payment-summary__heading">Estimated payment summary</div><div class="application-payment-summary__row"><span>Application fee</span><b>${registrationWaived?'Waived for re-registration':cents(price.application)}</b></div>${price.acceptance?`<div class="application-payment-summary__row"><span>Acceptance fee after approval</span><b>${cents(price.acceptance)}</b></div>`:''}<div class="application-payment-summary__row"><span>Monthly school fee</span><b>${cents(price.monthly)}</b></div>${aftercare?`<div class="application-payment-summary__row"><span>${esc(aftercare.label)}</span><b>${aftercare.monthly?`${cents(aftercare.monthly)} / month`:'Pay as used'}</b></div>`:''}${transport?`<div class="application-payment-summary__row"><span>Transport · ${esc(transport[0])}</span><b>${cents(transport[1])} / month</b></div><div class="application-payment-summary__row"><span>Published sibling transport price</span><b>${cents(transport[2])}</b></div>`:''}<div class="application-payment-summary__row total"><span>Estimated monthly total</span><b>${cents(finalMonthly)}</b></div>`:'';
+            const soshanguve=normalizedBranch(branchName).includes('soshanguve');
+            field('transportRoute').disabled=Boolean(branch)&&!soshanguve;
+            r.querySelector('[data-transport-note]').textContent=soshanguve?'Select the location required. The selected monthly transport fee is added to the total.':'Transport routes and prices are not configured for this branch; the branch must confirm them.';
+            if(branch&&!soshanguve)field('transportRoute').value='';
+          };
+          dateInput.addEventListener('change',()=>{const stage=stageForDateOfBirth(dateInput.value);if(stage){field('currentGrade').value=stage;field('schoolStage').value=stage;}updatePricing();});
+          r.querySelector('[data-additional-guardian]').addEventListener('change',updateConditionalFields);
+          ['applicationType','aftercareRequested','aftercareOption','transportRequested','transportRoute','attendedPreschool','branchId','schoolStage'].forEach(name=>field(name).addEventListener('change',()=>{updateConditionalFields();updatePricing();}));
+          updateConditionalFields();updatePricing();
           r.querySelectorAll('[data-application-document]').forEach(input=>input.addEventListener('change',()=>input.closest('label').classList.toggle('has-file',Boolean(input.files[0]))));
           r.querySelector('[data-x]').addEventListener('click',close);
           r.querySelector('[data-s]').addEventListener('click',async(event)=>{
             const v=UI.formVals(r);
-            const required=['parentName','parentEmail','parentPhone','childName','childIdNumber','childDateOfBirth','currentGrade','branchId','reason','schoolType','schoolStage','preferredStartDate','previousSchool','previousSchoolPhone','referralSource','emergencyContactName','emergencyContactPhone','feePayerFirstName','feePayerLastName'];
+            const required=['parentName','parentEmail','parentPhone','childName','childIdNumber','childDateOfBirth','currentGrade','branchId','reason','schoolType','schoolStage','preferredStartDate','referralSource','emergencyContactName','emergencyContactPhone','feePayerFirstName','feePayerLastName'];
+            if(v.attendedPreschool==='true')required.push('previousSchool','previousSchoolPhone');
+            if(v.aftercareRequested==='true')required.push('aftercareOption');
+            const branch=DB.branches.find(item=>item.id===v.branchId);
+            if(v.transportRequested==='true'&&normalizedBranch(branch?.name).includes('soshanguve'))required.push('transportRoute');
+            const additionalGuardianEnabled=r.querySelector('[data-additional-guardian]').checked;
+            if(additionalGuardianEnabled)required.push('additionalGuardianName','additionalGuardianRelationship','additionalGuardianEmail','additionalGuardianPhone');
             if(required.some(key=>!v[key])){UI.toast('Complete every required onboarding field','alert');return;}
-            const consentKeys=['feePayerTermsAccepted','photoConsent','informationAccurate','privacyAccepted','termsAccepted','enrolmentTermsAccepted'];
+            const emergency=comparablePhone(v.emergencyContactPhone),parentPhones=[v.parentPhone,additionalGuardianEnabled?v.additionalGuardianPhone:''].filter(Boolean).map(comparablePhone);
+            if(parentPhones.includes(emergency)){UI.toast('Emergency contact must be someone other than an enrolling parent','alert');return;}
+            const consentKeys=['feePayerTermsAccepted','informationAccurate','privacyAccepted','termsAccepted','enrolmentTermsAccepted'];
             const consents=Object.fromEntries(consentKeys.map(key=>[key,Boolean(r.querySelector(`[data-consent="${key}"]`)?.checked)]));
             if(consentKeys.some(key=>!consents[key])){UI.toast('Accept all fee-payer and application consent statements','alert');return;}
             const documentInputs=[...r.querySelectorAll('[data-application-document]')];
             if(documentInputs.some(input=>input.required&&!input.files[0])){UI.toast('Upload every required application document','alert');return;}
             if(documentInputs.some(input=>input.files[0]?.size>8*1024*1024)){UI.toast('Each document must be smaller than 8 MB','alert');return;}
-            const branch=DB.branches.find(item=>item.id===v.branchId);
             if(!branch){UI.toast('Select a valid preferred branch','alert');return;}
             const s=DB.schools[0];
             const button=event.currentTarget;button.disabled=true;button.textContent='Creating…';
             try{
               const created=await MobsieApi.mutate('/api/applications?tenantId='+encodeURIComponent(MobsieSession.tenantId),{method:'POST',body:JSON.stringify({
                 applicationType:v.applicationType,parentName:v.parentName,parentEmail:v.parentEmail,parentPhone:v.parentPhone,relationship:v.relationship,
+                additionalGuardianEnabled,additionalGuardianName:v.additionalGuardianName,additionalGuardianRelationship:v.additionalGuardianRelationship,
+                additionalGuardianEmail:v.additionalGuardianEmail,additionalGuardianPhone:v.additionalGuardianPhone,
                 childName:v.childName,childIdNumber:v.childIdNumber,childDateOfBirth:v.childDateOfBirth,childGender:v.childGender,currentGrade:v.currentGrade,
                 childHasDisability:v.childHasDisability==='true',disabilityDetails:v.disabilityDetails
               })});
               const application=created.data.application,authHeaders={'X-Application-Token':created.data.accessToken};
               const preferences=await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/preferences`,{method:'PUT',headers:authHeaders,body:JSON.stringify({
                 branchId:v.branchId,reason:v.reason,schoolType:v.schoolType,schoolStage:v.schoolStage,preferredStartDate:v.preferredStartDate,enrollmentType:v.enrollmentType,
-                aftercareRequested:v.aftercareRequested==='true',previousSchool:v.previousSchool,previousSchoolPhone:v.previousSchoolPhone,referralSource:v.referralSource,
+                aftercareRequested:v.aftercareRequested==='true',aftercareOption:v.aftercareRequested==='true'?v.aftercareOption:'',
+                transportRequested:v.transportRequested==='true',transportRoute:v.transportRequested==='true'?v.transportRoute:'',
+                previousSchool:v.attendedPreschool==='true'?v.previousSchool:'',previousSchoolPhone:v.attendedPreschool==='true'?v.previousSchoolPhone:'',referralSource:v.referralSource,
                 attendedPreschool:v.attendedPreschool==='true',allergies:v.allergies,emergencyContactName:v.emergencyContactName,emergencyContactPhone:v.emergencyContactPhone,
                 feePayerFirstName:v.feePayerFirstName,feePayerLastName:v.feePayerLastName,feePayerTermsAccepted:true
               })});
               const uploadedDocuments=[];
               for(const input of documentInputs){const file=input.files[0];if(!file)continue;const mimeType=file.type==='image/png'?'image/png':file.type==='image/jpeg'||file.type==='image/jpg'?'image/jpeg':'application/pdf';const uploaded=await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/documents`,{method:'POST',headers:authHeaders,body:JSON.stringify({kind:input.dataset.applicationDocument,originalName:file.name,mimeType,fileData:await readApplicationFile(file)})});uploadedDocuments.push({id:uploaded.data.id,kind:input.dataset.applicationDocument,originalName:file.name,mimeType,reviewStatus:'PENDING'});}
-              await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/status`,{method:'PUT',body:JSON.stringify({status:'PENDING_REVIEW',consents:{informationAccurate:true,privacyAccepted:true,termsAccepted:true,enrolmentTermsAccepted:true,photoConsent:true}})});
+              await MobsieApi.mutate(`/api/applications/${encodeURIComponent(application.id)}/status`,{method:'PUT',body:JSON.stringify({status:'PENDING_REVIEW',consents:{informationAccurate:true,privacyAccepted:true,termsAccepted:true,enrolmentTermsAccepted:true,photoConsent:v.photoConsent==='true'}})});
               const reference=preferences.data.reference||application.reference;
               DB.applications.unshift({id:reference,databaseId:application.id,child:v.childName,parent:v.parentName,email:v.parentEmail,phone:v.parentPhone,school:s.name,schoolId:s.id,
                 branch:branch.name,schoolGrade:branch.schoolGrade||schoolGradeOf(branch.name),grade:v.currentGrade,status:'Pending Review',date:new Date().toLocaleDateString('en-ZA'),
                 documents:uploadedDocuments,docs:uploadedDocuments.length,preferences:{branchId:v.branchId,branchName:branch.name,reason:v.reason,schoolType:v.schoolType,schoolStage:v.schoolStage,
-                  preferredStartDate:v.preferredStartDate,enrollmentType:v.enrollmentType,aftercareRequested:v.aftercareRequested==='true',previousSchool:v.previousSchool,
-                  previousSchoolPhone:v.previousSchoolPhone,referralSource:v.referralSource,attendedPreschool:v.attendedPreschool==='true',allergies:v.allergies,
+                  preferredStartDate:v.preferredStartDate,enrollmentType:v.enrollmentType,aftercareRequested:v.aftercareRequested==='true',
+                  aftercareOption:v.aftercareRequested==='true'?v.aftercareOption:'',transportRequested:v.transportRequested==='true',transportRoute:v.transportRequested==='true'?v.transportRoute:'',
+                  previousSchool:v.attendedPreschool==='true'?v.previousSchool:'',previousSchoolPhone:v.attendedPreschool==='true'?v.previousSchoolPhone:'',referralSource:v.referralSource,attendedPreschool:v.attendedPreschool==='true',allergies:v.allergies,
                   emergencyContactName:v.emergencyContactName,emergencyContactPhone:v.emergencyContactPhone,feePayerFirstName:v.feePayerFirstName,
                   feePayerLastName:v.feePayerLastName,feePayerTermsAccepted:true}});
               DB.appCounts[0]++;DB.counters.pendingReview++;aState.tab='All';DB.log('Captured application',v.childName+' — '+branch.name,'ok');

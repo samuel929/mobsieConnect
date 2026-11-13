@@ -410,6 +410,11 @@ table.mc thead th.num{text-align:right}
 .application-consents{display:grid;gap:9px}
 .application-consent{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;line-height:1.45;color:var(--ink-700)}
 .application-consent input{margin-top:2px;accent-color:var(--green-600)}
+.application-fee-preview,.application-payment-summary{margin:0 0 16px;padding:16px;border:1px solid #b9e3da;border-radius:16px;background:#f5fbf9;color:var(--ink-800)}
+.application-fee-preview__heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.application-fee-preview__heading strong{color:#087f72;font-size:15px}.application-fee-preview__heading span{color:var(--ink-500);font-size:12px}
+.application-fee-preview__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.application-fee-preview__grid span{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #d8e9e5;border-radius:11px;background:#fff;color:var(--ink-500);font-size:11.5px}.application-fee-preview__grid b{color:var(--ink-800);font-size:14px}
+.application-payment-summary{margin-top:16px;margin-bottom:0;background:#fff8f2;border-color:#ffd8b9}.application-payment-summary__heading{margin-bottom:9px;color:#d95600;font-size:14px;font-weight:800}.application-payment-summary__row{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #f3e4d8;font-size:12.5px}.application-payment-summary__row:last-child{border-bottom:0}.application-payment-summary__row.total{margin-top:3px;padding-top:12px;color:var(--ink-900);font-size:14px}
+.dashboard-application-form [hidden]{display:none!important}.dashboard-application-form select:disabled{background-color:#f1f5f9;color:var(--ink-600);cursor:not-allowed}
 @media(max-width:1050px){
   .application-document-row{grid-template-columns:48px minmax(0,1fr) max-content}
   .application-document-actions{grid-column:1/-1;justify-content:flex-start;padding-left:62px}
@@ -419,6 +424,7 @@ table.mc thead th.num{text-align:right}
   .application-document-status{grid-column:2}
   .application-document-actions{grid-column:1/-1;padding-left:0}
   .application-document-upload-grid{grid-template-columns:1fr}
+  .application-fee-preview__grid{grid-template-columns:1fr}
 }
 
 .rank-list{display:flex;flex-direction:column}
