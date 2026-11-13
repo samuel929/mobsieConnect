@@ -4,6 +4,7 @@ import { apiHandler, pageLimit } from "@/server/api";
 import { query } from "@/server/db";
 import { createAndSendNotification } from "@/server/expoPush";
 import { publishRealtime } from "@/server/realtime";
+import { requireDashboardPermission } from "@/server/auth";
 
 const replySchema = z.object({
   parentAccountId: z.string().uuid(),
@@ -30,10 +31,11 @@ type ParentRow = {
 export default apiHandler<MessageRow[]>(
   {
     methods: ["GET", "POST"],
-    roles: ["PRINCIPAL"],
+    roles: ["PRINCIPAL", "TEACHER"],
   },
 
   async (req, res, { user }) => {
+    await requireDashboardPermission(user!, "Messages");
     /**
      * -----------------------------------------
      * POST
@@ -56,9 +58,11 @@ export default apiHandler<MessageRow[]>(
           WHERE id = $1
             AND tenant_id = $2
             AND is_active = true
+            AND ($3::uuid IS NULL OR $4::text = 'PRINCIPAL' OR branch_id = $3)
+            AND ($3::uuid IS NULL OR $4::text = 'PRINCIPAL' OR branch_id = $3)
           LIMIT 1
         `,
-        [input.parentAccountId, user!.tenantId],
+        [input.parentAccountId, user!.tenantId, user!.branchId, user!.role],
       );
 
       if (!parent.rows[0]) {
@@ -179,6 +183,7 @@ export default apiHandler<MessageRow[]>(
          AND p.tenant_id = m.tenant_id
 
         WHERE m.tenant_id = $1
+          AND ($3::uuid IS NULL OR $4::text = 'PRINCIPAL' OR p.branch_id = $3)
 
         ORDER BY
           m.created_at DESC,
@@ -186,7 +191,7 @@ export default apiHandler<MessageRow[]>(
 
         LIMIT $2
       `,
-      [user!.tenantId, limit],
+      [user!.tenantId, limit, user!.branchId, user!.role],
     );
 
     res.status(200).json({

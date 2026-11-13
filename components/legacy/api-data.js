@@ -112,8 +112,7 @@
         principalPhone: branch.principalPhone || '',
         students: branch.learnerCount || 0,
         teachers: branch.teacherCount || 0,
-        revenue: 0,
-        attendance: branch.attendanceRate || 0,
+        applications: branch.applicationCount || 0,
         phone: branch.phone || '',
         email: branch.email || '',
         address: branch.address || '',
@@ -197,7 +196,8 @@
     if (users) {
       window.DB.adminUsers=users.map((account)=>({
         id:account.id,name:account.name,email:account.email,
-        role:account.role==='PRINCIPAL'?'Principal':'Teacher',roleValue:account.role,
+        role:account.dashboardRoleName||(account.role==='PRINCIPAL'?'Principal':'Teacher'),roleValue:account.role,
+        dashboardRoleId:account.dashboardRoleId||'',roleColor:account.dashboardRoleColor||'',
         branchId:account.branchId||'',scope:account.branchName||'Entire school group',
         last:account.lastLoginAt?new Date(account.lastLoginAt).toLocaleString('en-ZA'):'Never',
         status:account.isActive?'Active':'Suspended',

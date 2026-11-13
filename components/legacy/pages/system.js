@@ -122,23 +122,31 @@ window.Pages=window.Pages||{};
     },
     mount(root){
       root.querySelector('#uQ').addEventListener('input',e=>UI.tableFilter(UI.lastTableId(),e.target.value));
+      const updateUser=async(u,payload)=>{
+        const response=await MobsieApi.mutate('/api/users/'+encodeURIComponent(u.id),{method:'PUT',body:JSON.stringify(payload)});
+        return response.data;
+      };
+      const changeRole=u=>UI.modal({
+        title:'Change user role',
+        body:`<div class="user-editor"><section class="user-editor__section"><div class="user-editor__section-title">Role and campus access</div>
+          <div class="field"><label>User</label><input value="${esc(u.name)} · ${esc(u.email)}" disabled></div>
+          <div class="form-row"><div class="field"><label>Dashboard role</label><select data-f="dashboardRoleId">${DB.rolePerms.roles.map(role=>`<option value="${esc(role.id)}" ${String(role.id)===String(u.dashboardRoleId)?'selected':''}>${esc(role.name)}</option>`).join('')}</select></div>
+          <div class="field"><label>Campus access</label><select data-f="branchId"><option value="" ${!u.branchId?'selected':''}>Entire school group</option>${DB.liveBranches().map(branch=>`<option value="${esc(branch.id)}" ${String(branch.id)===String(u.branchId)?'selected':''}>${esc(branch.name)}</option>`).join('')}</select></div></div>
+        </section></div>`,
+        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Save access</button>`,
+        mount(r,close){r.querySelector('[data-x]').addEventListener('click',close);r.querySelector('[data-s]').addEventListener('click',async()=>{const v=UI.formVals(r),save=r.querySelector('[data-s]');if(!v.dashboardRoleId){UI.toast('Select a dashboard role','alert');return;}save.disabled=true;save.textContent='Saving…';try{const updated=await updateUser(u,{dashboardRoleId:v.dashboardRoleId,branchId:v.branchId||null});const oldRole=DB.rolePerms.roles.find(role=>role.id===u.dashboardRoleId);const nextRole=DB.rolePerms.roles.find(role=>role.id===v.dashboardRoleId);if(oldRole&&oldRole.id!==nextRole?.id)oldRole.users=Math.max(0,Number(oldRole.users||0)-1);if(nextRole&&oldRole?.id!==nextRole.id)nextRole.users=Number(nextRole.users||0)+1;Object.assign(u,{dashboardRoleId:v.dashboardRoleId,role:updated.dashboardRoleName||nextRole?.name||u.role,branchId:updated.branchId||'',scope:updated.branchName||'Entire school group'});close();UI.toast('User role and access updated.');App.refresh();}catch(error){save.disabled=false;save.textContent='Save access';UI.toast(error.message||'Could not update user access','alert');}});}
+      });
+      const resetPassword=u=>UI.modal({title:'Set new password',body:`<div class="user-editor"><section class="user-editor__section"><div class="user-editor__section-title">New login password for ${esc(u.name)}</div><div class="field"><label>New password</label><input type="password" data-f="password" minlength="8" maxlength="128" autocomplete="new-password"></div><div class="field"><label>Confirm password</label><input type="password" data-f="confirmPassword" minlength="8" maxlength="128" autocomplete="new-password"></div></section></div>`,foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Update password</button>`,mount(r,close){r.querySelector('[data-x]').addEventListener('click',close);r.querySelector('[data-s]').addEventListener('click',async()=>{const v=UI.formVals(r),save=r.querySelector('[data-s]');if(v.password.length<8){UI.toast('Password must contain at least 8 characters','alert');return;}if(v.password!==v.confirmPassword){UI.toast('Passwords do not match','alert');return;}save.disabled=true;save.textContent='Updating…';try{await updateUser(u,{password:v.password});close();UI.toast('Password updated successfully.');}catch(error){save.disabled=false;save.textContent='Update password';UI.toast(error.message||'Could not update password','alert');}});}});
       root.addEventListener('click',e=>{
         const b=e.target.closest('[data-umenu]');
         if(!b) return;
         const u=DB.adminUsers.find(x=>x.email===b.dataset.umenu);
         if(!u) return;
         UI.menu(b,[
-          {icon:'roles',label:'Change role',onClick:()=>App.go('roles')},
-          {icon:'refresh',label:'Reset password',onClick:()=>{
-            DB.log('Reset user password',u.email,'info');
-            UI.toast('Password reset email sent to '+u.email);
-          }},
+          {icon:'roles',label:'Change role',onClick:()=>changeRole(u)},
+          {icon:'refresh',label:'Set new password',onClick:()=>resetPassword(u)},
           '-',
-          {icon:'pause',label:u.status==='Suspended'?'Restore access':'Suspend access',danger:u.status!=='Suspended',onClick:()=>{
-            u.status=u.status==='Suspended'?'Active':'Suspended';
-            DB.log((u.status==='Suspended'?'Suspended user':'Restored user'),u.email,'warn');
-            UI.toast(u.name+(u.status==='Suspended'?' suspended':' restored'));App.refresh();
-          }},
+          {icon:'pause',label:u.status==='Suspended'?'Restore access':'Suspend access',danger:u.status!=='Suspended',onClick:async()=>{const next=u.status==='Suspended';try{await updateUser(u,{isActive:next});u.status=next?'Active':'Suspended';DB.log((next?'Restored user':'Suspended user'),u.email,'warn');UI.toast(u.name+(next?' restored':' suspended'));App.refresh();}catch(error){UI.toast(error.message||'Could not update user access','alert');}}},
           '-',
           {icon:'delete',label:'Remove user',danger:true,onClick:()=>UI.modal({
             title:'Remove user permanently',

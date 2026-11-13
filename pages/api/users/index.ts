@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiHandler } from "@/server/api";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { requireDashboardPermission } from "@/server/auth";
 
 const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -23,14 +24,21 @@ type UserRow = {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  dashboardRoleId?: string | null;
+  dashboardRoleName?: string | null;
+  dashboardRoleColor?: string | null;
 };
 
 export default apiHandler<UserRow[]>({ methods: ["GET", "POST"], roles: ["PRINCIPAL"] }, async (req, res, { user }) => {
+  await requireDashboardPermission(user!, "User management");
   if (req.method === "GET") {
     const result = await query<UserRow>(
       `SELECT u.id,u.name,u.email::text,u.role,u.branch_id AS "branchId",b.name AS "branchName",
-        u.is_active AS "isActive",u.last_login_at::text AS "lastLoginAt",u.created_at::text AS "createdAt"
+        u.is_active AS "isActive",u.last_login_at::text AS "lastLoginAt",u.created_at::text AS "createdAt",
+        dr.id AS "dashboardRoleId",dr.name AS "dashboardRoleName",dr.color AS "dashboardRoleColor"
        FROM users u LEFT JOIN branches b ON b.id=u.branch_id
+       LEFT JOIN user_dashboard_roles udr ON udr.user_id=u.id
+       LEFT JOIN dashboard_roles dr ON dr.id=udr.role_id
        WHERE u.tenant_id=$1 ORDER BY u.created_at DESC`,
       [user!.tenantId],
     );

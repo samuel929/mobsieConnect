@@ -3,11 +3,13 @@ import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { dailyActivityUpdateSchema } from "@/server/validation";
 import { publishRealtime } from "@/server/realtime";
+import { requireDashboardPermission } from "@/server/auth";
 
 export default apiHandler<unknown>(
   { methods: ["PUT", "DELETE"] },
   async (req, res, context) => {
     const user = context.user!;
+    await requireDashboardPermission(user, "Daily activities");
     const id = one(req.query.id);
     if (!id) throw new AppError(422, "ACTIVITY_REQUIRED", "An activity id is required.");
     if (req.method === "DELETE") {

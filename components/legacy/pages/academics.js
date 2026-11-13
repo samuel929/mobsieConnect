@@ -1033,7 +1033,7 @@ Pages['daily-activity'] = {
 
 
                         <button
-                          class="icon-btn"
+                          class="btn btn-ghost btn-sm daily-activity-delete"
                           data-daily-delete="${esc(
                             row.id
                           )}"
@@ -1041,6 +1041,8 @@ Pages['daily-activity'] = {
                         >
 
                           ${MCIcon('delete')}
+
+                          Delete
 
                         </button>
 
@@ -1065,19 +1067,13 @@ Pages['daily-activity'] = {
                 "
               >
 
-                <div class="empty-ico">
-
-                  ${MCIcon('clock')}
-
-                </div>
-
                 <b>
-                  No activities found
+                  No activity found
                 </b>
 
                 <p>
-                  There are no activities for this
-                  branch, class and date.
+                  There is no activity for this branch,
+                  class and date.
                 </p>
 
                 <button

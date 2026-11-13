@@ -90,6 +90,25 @@ export function requireRole(user: SessionUser, roles: Role[]) {
   }
 }
 
+export async function requireDashboardPermission(user: SessionUser, permission: string) {
+  const assigned = await query<{ granted: boolean }>(
+    `SELECT COALESCE(p.granted,false) AS granted
+     FROM user_dashboard_roles ur
+     JOIN dashboard_roles r ON r.id=ur.role_id AND r.tenant_id=$2
+     LEFT JOIN dashboard_role_permissions p ON p.role_id=r.id AND p.permission_key=$3
+     WHERE ur.user_id=$1
+     LIMIT 1`,
+    [user.id, user.tenantId, permission],
+  );
+  if (assigned.rows[0]) {
+    if (!assigned.rows[0].granted) throw new AppError(403, "FORBIDDEN", "Your dashboard role does not allow this action.");
+    return;
+  }
+  // Existing principal accounts created before dashboard roles were added are
+  // treated as administrators until GET /api/roles assigns Super Admin.
+  if (user.role !== "PRINCIPAL") throw new AppError(403, "FORBIDDEN", "Your dashboard role does not allow this action.");
+}
+
 export function sessionCookie(token: string) {
   return stringifySetCookie({
     name: SESSION_COOKIE,

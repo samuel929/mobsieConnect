@@ -3,12 +3,14 @@ import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { dailyActivitySchema } from "@/server/validation";
 import { publishRealtime } from "@/server/realtime";
+import { requireDashboardPermission } from "@/server/auth";
 
 export default apiHandler<unknown>(
   { methods: ["GET", "POST"] },
   async (req, res, context) => {
     res.setHeader("Cache-Control", "no-store, max-age=0");
     const user = context.user!;
+    await requireDashboardPermission(user, "Daily activities");
     const branchId = one(req.query.branchId);
     const className = one(req.query.className);
     const activityDate = one(req.query.date);

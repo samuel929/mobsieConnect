@@ -23,8 +23,7 @@ window.Pages=window.Pages||{};
       <div class="sc-stats">
         <div class="sc-stat"><div class="n">${F(b.students)}</div><div class="l">Learners</div></div>
         <div class="sc-stat"><div class="n">${b.teachers}</div><div class="l">Teachers</div></div>
-        <div class="sc-stat"><div class="n">${b.attendance}%</div><div class="l">Attendance</div></div>
-        <div class="sc-stat"><div class="n">${Rk(b.revenue)}</div><div class="l">Fees /mo</div></div>
+        <div class="sc-stat"><div class="n">${F(b.applications||0)}</div><div class="l">Applications</div></div>
       </div>
       <div style="padding:0 18px 12px;display:flex;align-items:center;gap:10px">
         ${UI.avatar(b.principal,'sm')}<span class="small" style="font-weight:600;color:var(--ink-600)">${esc(b.principal)}</span>
@@ -77,7 +76,7 @@ window.Pages=window.Pages||{};
           <div class="mini-stat"><span class="ms-ic t-purple">${MCIcon('learners')}</span><div><div class="ms-val">${F(DB.totals.students)}</div><div class="ms-lbl">Learners</div></div></div>
           <div class="mini-stat"><span class="ms-ic t-blue">${MCIcon('parents')}</span><div><div class="ms-val">${F(DB.totals.parents)}</div><div class="ms-lbl">Parents</div></div></div>
           <div class="mini-stat"><span class="ms-ic t-teal">${MCIcon('teachers')}</span><div><div class="ms-val">${DB.totals.teachers}</div><div class="ms-lbl">Teachers</div></div></div>
-          <div class="mini-stat"><span class="ms-ic t-orange">${MCIcon('payments')}</span><div><div class="ms-val">${Rk(DB.totals.mrr)}</div><div class="ms-lbl">Fees /mo</div></div></div>
+          <div class="mini-stat"><span class="ms-ic t-orange">${MCIcon('applications')}</span><div><div class="ms-val">${F(live.reduce((sum,b)=>sum+Number(b.applications||0),0))}</div><div class="ms-lbl">Applications</div></div></div>
         </div>
       </div></div>
 
@@ -94,8 +93,8 @@ window.Pages=window.Pages||{};
     bindCampusCards(root);
     root.querySelector('#addCampus').addEventListener('click',()=>addCampusModal());
     root.querySelector('#expCampuses').addEventListener('click',()=>UI.downloadCSV('mobsie-campuses.csv',
-      ['Campus','School grade','City','Region','Principal','Status','Learners','Teachers','Attendance %','Fees (R/mo)'],
-      DB.branches.map(b=>[b.name,b.schoolGrade||schoolGradeOf(b.name),b.city,b.region,b.principal,b.status,b.students,b.teachers,b.attendance,b.revenue])));
+      ['Campus','School grade','City','Region','Principal','Status','Learners','Teachers','Applications'],
+      DB.branches.map(b=>[b.name,b.schoolGrade||schoolGradeOf(b.name),b.city,b.region,b.principal,b.status,b.students,b.teachers,b.applications||0])));
     root.addEventListener('click',e=>{
       const t=e.target.closest('[data-exp-track]');
       if(t){
@@ -144,8 +143,6 @@ window.Pages=window.Pages||{};
         {icon:'external',label:'View dashboard',onClick:()=>{App.ctx.school=DB.schools[0].id;App.ctx.branch=br.id;App.go('dashboard');}},
         {icon:'edit',label:'Edit campus',onClick:()=>editBranch(br)},
         {icon:'delete',label:'Delete campus',danger:true,onClick:()=>deleteBranch(br)},
-        {icon:'attendance',label:'Attendance',onClick:()=>App.go('attendance')},
-        {icon:'payments',label:'Finance',onClick:()=>App.go('payments')},
       ],{align:'right'});
     }));
     host.querySelectorAll('.school-card[data-campus]').forEach(c=>c.addEventListener('click',e=>{
@@ -327,17 +324,16 @@ window.Pages=window.Pages||{};
       body:`
         ${b.imageUrl?`<img src="${esc(b.imageUrl)}" alt="${esc(b.name)}" style="width:100%;height:190px;object-fit:cover;border-radius:16px;margin-bottom:18px">`:''}
         <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">${UI.badge(b.region,'orange')} ${UI.status(b.status)} ${UI.badge('Since '+b.since,'ink')}</div>
-        <div class="grid cards-4" style="gap:10px;margin-bottom:20px">
+        <div class="grid cards-3" style="gap:10px;margin-bottom:20px">
           <div class="mini-stat"><span class="ms-ic t-purple">${MCIcon('learners')}</span><div><div class="ms-val">${F(b.students)}</div><div class="ms-lbl">Learners</div></div></div>
           <div class="mini-stat"><span class="ms-ic t-teal">${MCIcon('teachers')}</span><div><div class="ms-val">${b.teachers}</div><div class="ms-lbl">Teachers</div></div></div>
-          <div class="mini-stat"><span class="ms-ic t-green">${MCIcon('payments')}</span><div><div class="ms-val">${Rk(b.revenue)}</div><div class="ms-lbl">Fees /mo</div></div></div>
-          <div class="mini-stat"><span class="ms-ic t-orange">${MCIcon('attendance')}</span><div><div class="ms-val">${b.attendance}%</div><div class="ms-lbl">Attendance</div></div></div>
+          <div class="mini-stat"><span class="ms-ic t-orange">${MCIcon('applications')}</span><div><div class="ms-val">${F(b.applications||0)}</div><div class="ms-lbl">Applications</div></div></div>
         </div>
         <h4 style="margin-bottom:10px">Campus details</h4>
         ${UI.dl([['School grade',esc(b.schoolGrade||schoolGradeOf(b.name))],['Principal',esc(b.principal)],['City',esc(b.city)],['Region',esc(b.region)],['Phone',esc(b.phone)]])}
         <div class="divider"></div>
         <h4 style="margin-bottom:6px">This campus includes</h4>
-        <div class="tag-row" style="margin-top:8px">${['Gallery','Reports','Calendar','Communications','Attendance','Finance'].map(x=>UI.badge(x,'ink')).join('')}</div>`,
+        <div class="tag-row" style="margin-top:8px">${['Applications','Learners','Teachers','Gallery','Calendar','Communications'].map(x=>UI.badge(x,'ink')).join('')}</div>`,
       foot:`<button class="btn btn-ghost" id="brDelete">${MCIcon('delete')} Delete</button>
             <button class="btn btn-ghost" id="brEdit">${MCIcon('edit')} Edit</button>
             <button class="btn btn-green" id="brOpen">${MCIcon('external')} Open Campus View</button>`,
@@ -355,7 +351,6 @@ window.Pages=window.Pages||{};
   function renderBranches(){
     const rows=DB.branches;
     const live=DB.liveBranches();
-    const avgAtt=Math.round(live.reduce((a,b)=>a+b.attendance,0)/(live.length||1));
     const tbl=UI.table({
       pageSize:10,
       rows,
@@ -367,8 +362,7 @@ window.Pages=window.Pages||{};
         {key:'principal',label:'Principal',render:r=>r.principal==='To be appointed'?`<span class="muted">To be appointed</span>`:UI.personCell(r.principal)},
         {key:'students',label:'Learners',num:true,render:r=>r.status==='Coming Soon'?'—':F(r.students)},
         {key:'teachers',label:'Teachers',num:true,render:r=>r.status==='Coming Soon'?'—':String(r.teachers)},
-        {key:'revenue',label:'Fees /mo',num:true,render:r=>r.status==='Coming Soon'?'—':Rk(r.revenue)},
-        {key:'attendance',label:'Attendance',render:r=>r.status==='Coming Soon'?'<span class="muted">—</span>':`<div style="display:flex;align-items:center;gap:10px;min-width:130px"><span class="meter"><i style="width:${r.attendance}%"></i></span><b style="font-variant-numeric:tabular-nums">${r.attendance}%</b></div>`},
+        {key:'applications',label:'Applications',num:true,render:r=>r.status==='Coming Soon'?'—':F(r.applications||0)},
         {key:'status',label:'Status',render:r=>UI.status(r.status)},
       ],
     });
@@ -380,8 +374,8 @@ window.Pages=window.Pages||{};
       <div class="grid cards-4" style="margin-bottom:20px">
         ${UI.statCard({icon:'branches',tint:'t-green',label:'Live Campuses',value:F(live.length),deltaHtml:`<span class="delta flat">+${rows.length-live.length} opening soon</span>`})}
         ${UI.statCard({icon:'learners',tint:'t-purple',label:'Learners Across Campuses',value:F(live.reduce((a,b)=>a+b.students,0))})}
-        ${UI.statCard({icon:'attendance',tint:'t-orange',label:'Average Attendance',value:avgAtt+'%',deltaHtml:UI.delta(1.8,'up','vs last month')})}
-        ${UI.statCard({icon:'payments',tint:'t-blue',label:'Fees Across Campuses',value:Rk(live.reduce((a,b)=>a+b.revenue,0)),deltaHtml:`<span class="delta flat">per month</span>`})}
+        ${UI.statCard({icon:'teachers',tint:'t-teal',label:'Teachers Across Campuses',value:F(live.reduce((a,b)=>a+b.teachers,0))})}
+        ${UI.statCard({icon:'applications',tint:'t-orange',label:'App Applications',value:F(live.reduce((a,b)=>a+Number(b.applications||0),0)),deltaHtml:'<span class="delta flat">submitted from onboarding</span>'})}
       </div>
       <div class="card">
         <div class="card-head"><div><h3>All campuses</h3><div class="sub">Click a campus for its profile, principal and performance</div></div>
@@ -398,8 +392,8 @@ window.Pages=window.Pages||{};
       root.querySelector('#brQ').addEventListener('input',e=>UI.tableFilter(Pages.branches._tid,e.target.value));
       root.querySelector('#addBranch').addEventListener('click',()=>addCampusModal());
       root.querySelector('#brExp').addEventListener('click',()=>UI.downloadCSV('mobsie-campuses.csv',
-        ['Campus','School grade','City','Region','Principal','Status','Learners','Teachers','Attendance %','Fees (R/mo)'],
-        DB.branches.map(b=>[b.name,b.schoolGrade||schoolGradeOf(b.name),b.city,b.region,b.principal,b.status,b.students,b.teachers,b.attendance,b.revenue])));
+        ['Campus','School grade','City','Region','Principal','Status','Learners','Teachers','Applications'],
+        DB.branches.map(b=>[b.name,b.schoolGrade||schoolGradeOf(b.name),b.city,b.region,b.principal,b.status,b.students,b.teachers,b.applications||0])));
     }
   };
 })();

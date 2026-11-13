@@ -45,10 +45,10 @@
       {route:'audit',label:'Audit Logs',icon:'audit'}]},
   ];
   const ROUTE_PERMISSION={dashboard:'View dashboard',schools:'Manage school profile',branches:'Manage campuses',
-    learners:'Manage learners',parents:'Manage learners',teachers:'Manage teachers','daily-activity':'Manage teachers',
+    learners:'Manage learners',parents:'Manage learners',teachers:'Manage teachers','daily-activity':'Daily activities',
     applications:'Admissions','waiting-list':'Admissions',attendance:'Manage learners',homework:'Manage learners',
     reports:'Reports & analytics',calendar:'Communications',payments:'Finance',invoices:'Finance',statements:'Finance',
-    messages:'Communications',newsletters:'Communications',push:'Communications',feedback:'Communications',
+    messages:'Messages',newsletters:'Communications',push:'Communications',feedback:'Communications',
     gallery:'Media & gallery',products:'Finance',orders:'Finance',inventory:'Finance',documents:'Manage school profile',
     users:'User management',roles:'User management',audit:'Platform settings'};
   function can(permission){

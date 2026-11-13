@@ -185,8 +185,20 @@ export default apiHandler<unknown>(
         ) AS "schoolGrade",
         b.city, b.region, b.address, b.phone,
         b.email::text, b.image_url AS "imageUrl", b.principal_name AS "principalName", b.principal_email::text AS "principalEmail",
-        b.principal_phone AS "principalPhone", b.learner_count AS "learnerCount",
-        b.teacher_count AS "teacherCount", b.attendance_rate::float AS "attendanceRate",
+        b.principal_phone AS "principalPhone",
+        (SELECT count(DISTINCT a.id)::int
+         FROM applications a
+         JOIN application_preferences ap ON ap.application_id = a.id
+         WHERE a.tenant_id = b.tenant_id
+           AND ap.branch_id = b.id
+           AND a.status NOT IN ('DRAFT', 'REJECTED')) AS "learnerCount",
+        (SELECT count(*)::int
+         FROM team_members tm
+         WHERE tm.tenant_id = b.tenant_id AND tm.branch_id = b.id) AS "teacherCount",
+        (SELECT count(*)::int
+         FROM applications a
+         JOIN application_preferences ap ON ap.application_id = a.id
+         WHERE a.tenant_id = b.tenant_id AND ap.branch_id = b.id) AS "applicationCount",
         b.status, b.created_at::text AS "createdAt",
         count(*) OVER()::text AS "totalCount"
        FROM branches b

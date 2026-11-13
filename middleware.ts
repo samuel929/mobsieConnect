@@ -2,15 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const PUBLIC_PATHS = ["/login", "/privacy", "/support", "/api", "/_next", "/favicon.ico"];
-const TEACHER_ROUTES = new Set([
-  "/learners",
-  "/attendance",
-  "/homework",
-  "/reports",
-  "/calendar",
-  "/academics",
-]);
-
 async function session(req: NextRequest) {
   const token = req.cookies.get("mobsie_session")?.value;
   const secret = process.env.JWT_SECRET;
@@ -38,10 +29,10 @@ export async function middleware(req: NextRequest) {
     url.searchParams.set("next", req.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
-  if (user.role === "TEACHER") {
-    if (path === "/") return NextResponse.redirect(new URL("/learners", req.url));
-    if (!TEACHER_ROUTES.has(path)) return NextResponse.redirect(new URL("/learners", req.url));
-  }
+  // Page access is driven by the user's database-backed dashboard role after
+  // boot. Do not hard-code TEACHER routes here: doing so would override grants
+  // changed in Roles & Permissions. Sensitive mutations are still protected by
+  // their API role/permission checks.
   return NextResponse.next();
 }
 

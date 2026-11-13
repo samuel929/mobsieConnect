@@ -3,20 +3,21 @@ import { z } from "zod";
 import { apiHandler } from "@/server/api";
 import { query, withTransaction } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { requireDashboardPermission } from "@/server/auth";
 
 export const PERMISSIONS = [
   "View dashboard","Manage school profile","Manage campuses","Manage learners",
   "Manage teachers","Admissions","Finance","Communications","Media & gallery",
-  "Reports & analytics","User management","Platform settings",
+  "Reports & analytics","User management","Platform settings","Daily activities","Messages",
 ] as const;
 
 const defaults: Array<[string,string,number[]]> = [
-  ["Super Admin","#F97316",[1,1,1,1,1,1,1,1,1,1,1,1]],
-  ["School Owner","#7C3AED",[1,1,1,1,1,1,1,1,1,1,1,0]],
-  ["Branch Principal","#2563EB",[1,0,0,1,1,1,0,1,1,1,0,0]],
-  ["Finance Manager","#16A34A",[1,0,0,0,0,0,1,0,0,1,0,0]],
-  ["Admissions","#0D9488",[1,0,0,1,0,1,0,1,0,0,0,0]],
-  ["Teacher","#D97706",[1,0,0,1,0,0,0,1,1,0,0,0]],
+  ["Super Admin","#F97316",[1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+  ["School Owner","#7C3AED",[1,1,1,1,1,1,1,1,1,1,1,0,1,1]],
+  ["Branch Principal","#2563EB",[1,0,0,1,1,1,0,1,1,1,0,0,1,1]],
+  ["Finance Manager","#16A34A",[1,0,0,0,0,0,1,0,0,1,0,0,0,0]],
+  ["Admissions","#0D9488",[1,0,0,1,0,1,0,1,0,0,0,0,0,1]],
+  ["Teacher","#D97706",[1,0,0,1,0,0,0,1,1,0,0,0,1,1]],
 ];
 
 async function ensureRoles(tenantId: string) {
@@ -40,6 +41,7 @@ export default apiHandler<unknown>({methods:["GET","POST","PUT"],roles:["PRINCIP
   await ensureRoles(principal.tenantId);
   if(req.method==="POST"){
     if(principal.role!=="PRINCIPAL")throw new AppError(403,"FORBIDDEN","Only principals can create roles.");
+    await requireDashboardPermission(principal,"User management");
     const input=createSchema.parse(req.body);
     const base=await query<{id:string}>("SELECT id FROM dashboard_roles WHERE id=$1 AND tenant_id=$2",[input.baseRoleId,principal.tenantId]);
     if(!base.rows[0])throw new AppError(404,"ROLE_NOT_FOUND","The starting role no longer exists.");
@@ -50,6 +52,7 @@ export default apiHandler<unknown>({methods:["GET","POST","PUT"],roles:["PRINCIP
   }
   if(req.method==="PUT"){
     if(principal.role!=="PRINCIPAL")throw new AppError(403,"FORBIDDEN","Only principals can change permissions.");
+    await requireDashboardPermission(principal,"User management");
     const input=updateSchema.parse(req.body);
     const role=await query("SELECT 1 FROM dashboard_roles WHERE id=$1 AND tenant_id=$2",[input.roleId,principal.tenantId]);
     if(!role.rows[0])throw new AppError(404,"ROLE_NOT_FOUND","That role no longer exists.");
