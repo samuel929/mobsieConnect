@@ -59,6 +59,19 @@ export default apiHandler<EventRow[]>(
       );
       const event=result.rows[0];
       await createAndSendNotification({tenantId,branchId:event.branchId,title:`New calendar date: ${event.title}`,body:input.description||`A new school calendar date has been added for ${new Date(event.startsAt).toLocaleDateString("en-ZA")}.`,sourceType:"CALENDAR_EVENT",sourceId:event.id,data:{screen:"Calendar",eventId:event.id}});
+      const reminderAt = new Date(new Date(event.startsAt).getTime() - 24 * 60 * 60 * 1000);
+      if (reminderAt.getTime() > Date.now()) {
+        await createAndSendNotification({
+          tenantId,
+          branchId:event.branchId,
+          title:`Tomorrow: ${event.title}`,
+          body:input.description||"This school calendar event is happening tomorrow.",
+          sourceType:"CALENDAR_REMINDER",
+          sourceId:event.id,
+          scheduledAt:reminderAt.toISOString(),
+          data:{screen:"Calendar",eventId:event.id},
+        });
+      }
       publishRealtime("calendar", tenantId);
       res.status(201).json({ ok: true, data: result.rows });
       return;
