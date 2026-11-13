@@ -579,6 +579,7 @@ window.Pages=window.Pages||{};
   `;
 
   UI.drawer({
+    cls: "application-details-drawer",
     title:
       "Application " +
       (detail?.reference || a.id || ""),

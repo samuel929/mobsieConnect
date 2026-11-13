@@ -176,7 +176,7 @@
   function drawer(o){
     const root=$('#drawerRoot');
     root.innerHTML=`<div class="drawer-scrim"></div>
-      <div class="drawer" role="dialog" aria-label="${esc(o.title)}">
+      <div class="drawer ${esc(o.cls||'')}" role="dialog" aria-label="${esc(o.title)}">
         <div class="drawer-head">${o.headIcon||''}<h3>${esc(o.title)}</h3>
           <button class="icon-btn x" aria-label="Close">${MCIcon('x')}</button></div>
         <div class="drawer-body">${o.body}</div>

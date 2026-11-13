@@ -94,11 +94,13 @@
         request('/api/newsletters'),
         request('/api/payments?limit=1000'),
         request('/api/invoices'),
+        request('/api/dashboard-notifications'),
+        request('/api/mobile-admin/messages?limit=500'),
       );
     }
     const results = await Promise.allSettled(calls);
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices] = successful;
+    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages] = successful;
 
     if (branches) {
       window.DB.branches = branches.map((branch) => ({
@@ -255,6 +257,16 @@
         amount:Number(invoice.amountCents||0)/100,issued:invoice.issuedOn,due:invoice.dueOn,
         status:statusLabel(invoice.status),paidAt:invoice.paidAt||'',createdAt:invoice.createdAt||'',
       }));
+      window.DB.dashboardNotifications=Array.isArray(dashboardNotifications)?dashboardNotifications:[];
+      const conversationMap=new Map();
+      (Array.isArray(dashboardMessages)?dashboardMessages:[]).forEach((message)=>{
+        const id=message.parentAccountId;if(!id)return;
+        const conversation=conversationMap.get(id)||{id,parentAccountId:id,who:message.parentName||message.parentEmail||'Parent',unread:0,msgs:[]};
+        conversation.msgs.push(message);
+        if(String(message.senderType).toUpperCase()==='PARENT'&&!message.readAt)conversation.unread+=1;
+        conversationMap.set(id,conversation);
+      });
+      window.DB.conversations=Array.from(conversationMap.values());
     }
     if(roleData?.roles){
       const permissions=roleData.permissions||[];

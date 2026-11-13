@@ -10,6 +10,7 @@ const replySchema = z.object({
   parentAccountId: z.string().uuid(),
   body: z.string().trim().min(1).max(4000),
 });
+const readSchema = z.object({ parentAccountId: z.string().uuid() });
 
 type MessageRow = {
   id: string;
@@ -30,12 +31,25 @@ type ParentRow = {
 
 export default apiHandler<MessageRow[]>(
   {
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PATCH"],
     roles: ["PRINCIPAL", "TEACHER"],
   },
 
   async (req, res, { user }) => {
     await requireDashboardPermission(user!, "Messages");
+    if (req.method === "PATCH") {
+      const input = readSchema.parse(req.body);
+      await query(
+        `UPDATE parent_messages SET read_at=COALESCE(read_at,now())
+         WHERE tenant_id=$1 AND parent_account_id=$2 AND sender_type='PARENT'
+           AND ($3::text='PRINCIPAL' OR EXISTS (
+             SELECT 1 FROM parent_accounts p WHERE p.id=parent_messages.parent_account_id
+               AND (p.preferred_branch_id=$4::uuid OR EXISTS (
+                 SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$4::uuid))))`,
+        [user!.tenantId,input.parentAccountId,user!.role,user!.branchId],
+      );
+      res.status(200).json({ok:true,data:[]});return;
+    }
     /**
      * -----------------------------------------
      * POST
@@ -58,8 +72,11 @@ export default apiHandler<MessageRow[]>(
           WHERE id = $1
             AND tenant_id = $2
             AND is_active = true
-            AND ($3::uuid IS NULL OR $4::text = 'PRINCIPAL' OR branch_id = $3)
-            AND ($3::uuid IS NULL OR $4::text = 'PRINCIPAL' OR branch_id = $3)
+            AND (
+              $3::uuid IS NULL OR $4::text = 'PRINCIPAL'
+              OR preferred_branch_id = $3
+              OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=parent_accounts.id AND s.branch_id=$3)
+            )
           LIMIT 1
         `,
         [input.parentAccountId, user!.tenantId, user!.branchId, user!.role],
@@ -183,7 +200,11 @@ export default apiHandler<MessageRow[]>(
          AND p.tenant_id = m.tenant_id
 
         WHERE m.tenant_id = $1
-          AND ($3::uuid IS NULL OR $4::text = 'PRINCIPAL' OR p.branch_id = $3)
+          AND (
+            $3::uuid IS NULL OR $4::text = 'PRINCIPAL'
+            OR p.preferred_branch_id = $3
+            OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3)
+          )
 
         ORDER BY
           m.created_at DESC,

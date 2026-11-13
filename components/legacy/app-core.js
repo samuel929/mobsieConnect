@@ -143,18 +143,15 @@
   }
 
   /* ---- Topbar ---- */
-  const NOTIFS=[
-    {icon:'applications',tint:'t-orange',t:'Applications awaiting review',s:'Admissions · today',go:'applications'},
-    {icon:'alert',tint:'t-red',t:'Payment failed — retry needed',s:'Payments · 32m ago',go:'payments'},
-    {icon:'school',tint:'t-green',t:'Atteridgeville campus onboarding',s:'Expansion · 3h ago',go:'schools'},
-    {icon:'server',tint:'t-blue',t:'Nightly backup completed in 1m 42s',s:'System · 02:00',go:'audit'},
-  ];
   function renderTopbar(){
     const tb=$('#topbar'); if(!tb) return;
     const pageTitle=findNav(App.route)?.label||'Dashboard';
     const br=App.branchObj();
     const user=window.MobsieSession||{name:'User',role:'PRINCIPAL'};
     const roleLabel=user.role==='TEACHER'?'Teacher':'Principal';
+    const notifications=Array.isArray(DB.dashboardNotifications)?DB.dashboardNotifications:[];
+    const unreadNotifications=notifications.filter(item=>!item.read).length;
+    const unreadMessages=(DB.conversations||[]).reduce((total,conversation)=>total+Number(conversation.unread||0),0);
     tb.innerHTML=`
       <button class="tb-burger" id="tbBurger" aria-label="Toggle navigation">${MCIcon('menu')}</button>
       <div class="tb-title">${esc(pageTitle)}</div>
@@ -162,8 +159,8 @@
       <div class="tb-right">
         <button class="tb-select" id="selSchool"><span class="ic orange">${MCIcon('school')}</span>${esc(App.scopeLabel())} ${MCIcon('chevDown','chev')}</button>
         <button class="tb-select" id="selBranch"><span class="ic green">${MCIcon('branches')}</span>${esc(br?br.name:'All Branches')} ${MCIcon('chevDown','chev')}</button>
-        <button class="tb-icon" id="tbBell">${MCIcon('bell')}<span class="dot">12</span></button>
-        <button class="tb-icon" id="tbChat">${MCIcon('chat')}${(u=>u?`<span class="dot orange">${u}</span>`:'')(DB.conversations.reduce((a,c)=>a+c.unread,0))}</button>
+        <button class="tb-icon" id="tbBell" aria-label="Notifications">${MCIcon('bell')}${unreadNotifications?`<span class="dot">${unreadNotifications>99?'99+':unreadNotifications}</span>`:''}</button>
+        <button class="tb-icon" id="tbChat" aria-label="Messages">${MCIcon('chat')}${unreadMessages?`<span class="dot orange">${unreadMessages>99?'99+':unreadMessages}</span>`:''}</button>
         <div class="tb-user" id="tbUser">${UI.avatar(user.name)}
           <div class="who"><div class="nm">${esc(user.name)}</div><div class="rl">${roleLabel}</div></div>${MCIcon('chevDown','chev')}</div>
       </div>`;
@@ -171,8 +168,13 @@
     $('#tbSearch').addEventListener('click',openSearch);
     $('#selSchool').addEventListener('click',e=>schoolMenu(e.currentTarget));
     $('#selBranch').addEventListener('click',e=>branchMenu(e.currentTarget));
-    $('#tbBell').addEventListener('click',e=>{
-      UI.menu(e.currentTarget,NOTIFS.map(n=>({icon:n.icon,label:n.t,onClick:()=>App.go(n.go)})),{head:'Notifications',align:'right'});
+    $('#tbBell').addEventListener('click',async e=>{
+      const anchor=e.currentTarget;
+      const keys=notifications.filter(item=>!item.read).map(item=>item.key);
+      notifications.forEach(item=>{item.read=true;});
+      anchor.querySelector('.dot')?.remove();
+      UI.menu(anchor,notifications.length?notifications.map(item=>({icon:item.icon||'bell',label:item.title+(item.subtitle?' — '+item.subtitle:''),onClick:()=>App.go(item.route||'dashboard')})):[{icon:'check',label:'You are all caught up',onClick:()=>{}}],{head:'Notifications',align:'right',scroll:true});
+      if(keys.length&&window.MobsieApi){try{await MobsieApi.mutate('/api/dashboard-notifications',{method:'PATCH',body:JSON.stringify({keys})});}catch(error){notifications.forEach(item=>{if(keys.includes(item.key))item.read=false;});UI.toast(error.message||'Could not update notifications','alert');renderTopbar();}}
     });
     $('#tbChat').addEventListener('click',()=>App.go('messages'));
     $('#tbUser').addEventListener('click',e=>{
@@ -212,6 +214,7 @@
     rerender();
     DB.save();
   };
+  App.refreshChrome=function(){renderSidebar();renderTopbar();};
   function renderPage(){
     const page=window.Pages[App.route];
     const c=$('#content'); if(!c||!page) return;

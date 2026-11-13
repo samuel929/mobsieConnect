@@ -10,6 +10,7 @@ const mState = {
   active: 0,
   loaded: false,
   loading: false,
+  error: "",
   conversations: [],
 };
 
@@ -262,6 +263,7 @@ async function loadMessages(root) {
   }
 
   mState.loading = true;
+  mState.error = "";
 
   try {
     const rows =
@@ -300,6 +302,8 @@ async function loadMessages(root) {
     );
 
     mState.conversations = [];
+    mState.loaded = true;
+    mState.error = error?.message || "Could not load messages.";
   } finally {
     mState.loading = false;
   }
@@ -678,6 +682,16 @@ Pages.messages = {
     const convs =
       mState.conversations || [];
 
+    if (mState.error) {
+      return `
+        ${UI.pageHead("Messages","Two-way chat between schools and families — synced with the parent app.",`<button class="btn btn-primary" id="newMsg">${MCIcon("plus")} New Message</button>`)}
+        <div class="card"><div class="card-body" style="padding:55px 24px;text-align:center">
+          <h3 style="margin-bottom:6px">Messages could not be loaded</h3>
+          <p class="muted" style="margin-bottom:18px">${esc(mState.error)}</p>
+          <button class="btn btn-primary" id="retryMessages">Try again</button>
+        </div></div>`;
+    }
+
 
     /**
      * No conversations.
@@ -1014,6 +1028,10 @@ Pages.messages = {
           ),
       );
 
+    root.querySelector("#retryMessages")?.addEventListener("click",()=>{
+      mState.loaded=false;mState.error="";loadMessages(root);
+    });
+
 
     root
       .querySelector(
@@ -1038,7 +1056,7 @@ Pages.messages = {
       .forEach(element => {
         element.addEventListener(
           "click",
-          () => {
+          async () => {
             const index =
               Number(
                 element.dataset.conv,
@@ -1061,14 +1079,19 @@ Pages.messages = {
              * If you later create a backend "mark read"
              * endpoint, call it here too.
              */
-            if (
-              mState.conversations[
-                index
-              ]
-            ) {
-              mState.conversations[
-                index
-              ].unread = 0;
+            const conversation=mState.conversations[index];
+            if (conversation) {
+              const previousUnread=conversation.unread;
+              conversation.unread = 0;
+              conversation.msgs.forEach(message=>{if(String(message.senderType).toUpperCase()==='PARENT'&&!message.readAt)message.readAt=new Date().toISOString();});
+              App.refreshChrome?.();
+              if(previousUnread>0){
+                try{
+                  await MobsieApi.mutate('/api/mobile-admin/messages',{method:'PATCH',body:JSON.stringify({parentAccountId:conversation.parentAccountId||conversation.id})});
+                }catch(error){
+                  conversation.unread=previousUnread;App.refreshChrome?.();UI.toast(error.message||'Could not mark messages as read','alert');
+                }
+              }
             }
 
 
