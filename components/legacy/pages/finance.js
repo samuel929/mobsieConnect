@@ -109,25 +109,22 @@ window.Pages=window.Pages||{};
             <div class="divider"></div>
             <h4 style="margin-bottom:10px">Line items</h4>
             <table class="mc" style="min-width:0"><tbody>
-              <tr><td>${esc(inv.desc)}</td><td class="num"><b>${R(inv.amount-120)}</b></td></tr>
-              <tr><td>Mobsie app service fee</td><td class="num"><b>R120</b></td></tr>
+              <tr><td>${esc(inv.desc)}</td><td class="num"><b>${R(inv.amount)}</b></td></tr>
               <tr><td class="cell-main">Total</td><td class="num cell-main">${R(inv.amount)}</td></tr>
             </tbody></table>`,
           foot:`<button class="btn btn-ghost" id="invPdf">${MCIcon('download')} PDF</button>
                 <button class="btn btn-ghost" id="invResend">${MCIcon('campaigns')} Resend</button>
                 ${inv.status!=='Paid'?`<button class="btn btn-green" id="invPaid">${MCIcon('check')} Mark Paid</button>`:''}`,
           mount(root,close){
-            root.querySelector('#invPdf').addEventListener('click',()=>UI.downloadCSV(inv.id+'.csv',
-              ['Invoice','Billed to','School','Description','Amount (R)','Issued','Due','Status'],
-              [[inv.id,inv.parent,inv.school,inv.desc,inv.amount,inv.issued,inv.due,inv.status]]));
-            root.querySelector('#invResend').addEventListener('click',()=>UI.toast('Invoice resent to '+inv.parent));
+            root.querySelector('#invPdf').addEventListener('click',()=>{window.location.href='/api/invoices/'+encodeURIComponent(inv.dbId)+'/pdf';});
+            root.querySelector('#invResend').addEventListener('click',async()=>{try{await MobsieApi.mutate('/api/invoices/'+encodeURIComponent(inv.dbId),{method:'PATCH',body:JSON.stringify({action:'RESEND'})});UI.toast('Invoice reminder sent to '+inv.parent);}catch(error){UI.toast(error.message||'Could not resend invoice','alert');}});
             const mp=root.querySelector('#invPaid');
-            if(mp) mp.addEventListener('click',()=>{
-              inv.status='Paid';
-              DB.payments.unshift({id:'PAY-'+(9033+DB.payments.length),parent:inv.parent,school:inv.school,
-                branch:inv.branch,amount:inv.amount,method:'EFT',date:'May 18, 2026',status:'Successful',ref:inv.id});
-              DB.log('Marked invoice paid',inv.id+' — '+R(inv.amount),'ok');
-              close();UI.toast(inv.id+' marked paid — receipt sent');App.refresh();
+            if(mp) mp.addEventListener('click',async()=>{
+              try{
+                await MobsieApi.mutate('/api/invoices/'+encodeURIComponent(inv.dbId),{method:'PATCH',body:JSON.stringify({action:'MARK_PAID'})});
+                inv.status='Paid';DB.log('Marked invoice paid',inv.id+' — '+R(inv.amount),'ok');
+                close();UI.toast(inv.id+' marked paid');App.refresh();
+              }catch(error){UI.toast(error.message||'Could not mark invoice paid','alert');}
             });
           }
         }),
@@ -160,7 +157,7 @@ window.Pages=window.Pages||{};
       root.querySelector('#invQ').addEventListener('input',e=>UI.tableFilter(Pages.invoices._tid,e.target.value));
       root.querySelector('#invNew').addEventListener('click',()=>UI.modal({
         title:'New Invoice',
-        body:`<div class="field"><label>Bill to</label><select data-f="parent">${DB.parents.slice(0,20).map(p=>`<option>${esc(p.name)}</option>`).join('')}</select></div>
+        body:`<div class="field"><label>Bill to</label><select data-f="parent">${DB.parents.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.email||p.branch||'')}</option>`).join('')}</select></div>
           <div class="field"><label>Description</label><input type="text" data-f="desc" placeholder="e.g. Aftercare — June"></div>
           <div class="form-row">
             <div class="field"><label>Amount (R)</label><input type="number" data-f="amount" placeholder="0.00"></div>
@@ -169,19 +166,19 @@ window.Pages=window.Pages||{};
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Issue Invoice</button>`,
         mount(r,close){
           r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',()=>{
+          r.querySelector('[data-s]').addEventListener('click',async()=>{
             const v=UI.formVals(r);
-            const amt=Math.round(+v.amount||0);
+            const amt=Number(v.amount||0);
             if(!amt||!v.desc){UI.toast('Description and amount are required','alert');return;}
-            const par=DB.parents.find(p=>p.name===v.parent)||DB.parents[0];
-            const today=new Date();
-            const dueDate=v.due?new Date(`${v.due}T12:00:00`):new Date(Date.now()+30*86400000);
-            DB.invoices.unshift({id:'INV-'+String(Date.now()).slice(-8),parent:par.name,
-              school:par.school,branch:par.branch,desc:v.desc,amount:amt,
-              issued:today.toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}),
-              due:dueDate.toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}),status:'Due'});
-            DB.log('Issued invoice',par.name+' — '+R(amt),'info');
-            close();UI.toast('Invoice issued and delivered to '+par.name+"'s app");App.refresh();
+            const par=DB.parents.find(p=>p.id===v.parent);
+            if(!par){UI.toast('Select a parent','alert');return;}
+            try{
+              const response=await MobsieApi.mutate('/api/invoices',{method:'POST',body:JSON.stringify({parentAccountId:par.id,description:v.desc,amount:amt,dueOn:v.due})});
+              const invoice=response.data[0];
+              DB.invoices.unshift({dbId:invoice.id,id:invoice.invoiceNumber,parentAccountId:invoice.parentAccountId,parent:invoice.parentName,parentEmail:invoice.parentEmail||'',school:DB.SCHOOL_NAME,branch:invoice.branchName||'Not assigned',branchId:invoice.branchId||'',desc:invoice.description,amount:Number(invoice.amountCents||0)/100,issued:invoice.issuedOn,due:invoice.dueOn,status:'Due'});
+              DB.log('Issued invoice',par.name+' — '+R(amt),'info');
+              close();UI.toast('Invoice issued and notification sent to '+par.name);App.refresh();
+            }catch(error){UI.toast(error.message||'Could not issue invoice','alert');}
           });
         }
       }));

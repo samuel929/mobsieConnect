@@ -93,11 +93,12 @@
         request('/api/documents?limit=500'),
         request('/api/newsletters'),
         request('/api/payments?limit=1000'),
+        request('/api/invoices'),
       );
     }
     const results = await Promise.allSettled(calls);
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments] = successful;
+    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices] = successful;
 
     if (branches) {
       window.DB.branches = branches.map((branch) => ({
@@ -247,6 +248,13 @@
         status:statusLabel(payment.status),
         ref:payment.applicationReference||'',
       }));
+      window.DB.invoices=(Array.isArray(invoices)?invoices:[]).map((invoice)=>({
+        dbId:invoice.id,id:invoice.invoiceNumber,parentAccountId:invoice.parentAccountId,
+        parent:invoice.parentName,parentEmail:invoice.parentEmail||'',school:window.DB.SCHOOL_NAME,
+        branch:invoice.branchName||'Not assigned',branchId:invoice.branchId||'',desc:invoice.description,
+        amount:Number(invoice.amountCents||0)/100,issued:invoice.issuedOn,due:invoice.dueOn,
+        status:statusLabel(invoice.status),paidAt:invoice.paidAt||'',createdAt:invoice.createdAt||'',
+      }));
     }
     if(roleData?.roles){
       const permissions=roleData.permissions||[];
@@ -360,7 +368,7 @@
     // modal edits are authoritative so a reload cannot undo a saved action.
     if (stored?.data?.state) {
       Object.entries(stored.data.state).forEach(([key, value]) => {
-        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','payments','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
+        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','payments','invoices','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
       });
     }
     // Saved control-centre state may predate the Mobsie Connect rename.
