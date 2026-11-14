@@ -20,15 +20,16 @@ window.Pages=window.Pages||{};
   Pages.gallery={
     render(){
       const b=App.branchObj();
-      const rows=b?DB.albums.filter(a=>a.branch===b.name):DB.albums;
+      const liveAlbums=(DB.albums||[]).filter(album=>album&&(album.imageUrl||album.publicId));
+      const rows=b?liveAlbums.filter(a=>a.branch===b.name):liveAlbums;
+      const totalPhotos=liveAlbums.reduce((total,album)=>total+Math.max(0,Number(album.count)||0),0);
+      const campusCount=new Set(liveAlbums.map(album=>album.branch).filter(Boolean)).size;
       return `
         ${UI.pageHead('Gallery','Class and event photo albums — parents only ever see their own child\'s classes.',
           `<button class="btn btn-primary" id="upAlbum">${MCIcon('upload')} Upload Album</button>`)}
-        <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'gallery',tint:'t-orange',label:'Photos This Month',value:F(DB.albums.reduce((a,x)=>a+x.count,0)+806),deltaHtml:UI.delta(18,'up','vs April')})}
-          ${UI.statCard({icon:'media',tint:'t-purple',label:'Albums',value:F(DB.albums.length+40),deltaHtml:`<span class="delta flat">across 5 campuses</span>`})}
-          ${UI.statCard({icon:'eye',tint:'t-blue',label:'Parent Views',value:F(18340),deltaHtml:UI.delta(22,'up','this month')})}
-          ${UI.statCard({icon:'check',tint:'t-green',label:'Awaiting Approval',value:'7',deltaHtml:`<span class="delta flat">auto-blur enabled</span>`})}
+        <div class="grid cards-2" style="margin-bottom:20px">
+          ${UI.statCard({icon:'gallery',tint:'t-orange',label:'Uploaded Photos',value:F(totalPhotos),deltaHtml:`<span class="delta flat">stored gallery uploads</span>`})}
+          ${UI.statCard({icon:'media',tint:'t-purple',label:'Albums',value:F(liveAlbums.length),deltaHtml:`<span class="delta flat">across ${F(campusCount)} ${campusCount===1?'campus':'campuses'}</span>`})}
         </div>
         <div class="gallery-grid">${rows.map(a=>{const i=DB.albums.indexOf(a);return `
           <div class="g-item" data-album="${i}">

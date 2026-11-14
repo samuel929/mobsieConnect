@@ -16,14 +16,17 @@ window.Pages=window.Pages||{};
 
   Pages.products={
     render(){
+      const stats=DB.shopStats||{};
+      const bestSeller=stats.bestSeller||null;
+      const stockAlerts=Number(stats.lowStock||0)+Number(stats.outOfStock||0);
       return `
         ${UI.pageHead('Products','School shop catalogue — uniforms, stationery and more, sold in the parent app.',
           `<button class="btn btn-primary" id="addProd">${MCIcon('plus')} Add Product</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'products',tint:'t-orange',label:'Active Products',value:String(DB.products.filter(p=>p.status!=='Hidden').length+16),deltaHtml:`<span class="delta flat">across 5 campus shops</span>`})}
-          ${UI.statCard({icon:'orders',tint:'t-green',label:'Shop Revenue',value:'R86,400',deltaHtml:UI.delta(14,'up','this month')})}
-          ${UI.statCard({icon:'trendUp',tint:'t-purple',label:'Best Seller',value:'Golf Shirt',deltaHtml:`<span class="delta flat">218 sold</span>`})}
-          ${UI.statCard({icon:'alert',tint:'t-red',label:'Stock Alerts',value:String(DB.products.filter(p=>p.stock<20).length),deltaHtml:`<span class="delta flat">${DB.products.filter(p=>p.stock===0).length} out of stock</span>`})}
+          ${UI.statCard({icon:'products',tint:'t-orange',label:'Active Products',value:F(Number(stats.activeProducts||0)),deltaHtml:`<span class="delta flat">live catalogue</span>`})}
+          ${UI.statCard({icon:'orders',tint:'t-green',label:'Shop Revenue',value:R(Number(stats.revenueCents||0)/100),deltaHtml:`<span class="delta flat">${F(Number(stats.paidOrders||0))} paid ${Number(stats.paidOrders||0)===1?'order':'orders'} this month</span>`})}
+          ${UI.statCard({icon:'trendUp',tint:'t-purple',label:'Best Seller',value:bestSeller?esc(bestSeller.name):'—',deltaHtml:`<span class="delta flat">${bestSeller?`${F(Number(bestSeller.quantity||0))} sold this month`:'no paid sales this month'}</span>`})}
+          ${UI.statCard({icon:'alert',tint:'t-red',label:'Stock Alerts',value:F(stockAlerts),deltaHtml:`<span class="delta flat">${F(Number(stats.outOfStock||0))} out of stock</span>`})}
         </div>
         <div class="grid cards-4">${DB.products.map((p,i)=>`
           <div class="card" style="overflow:hidden">
@@ -148,6 +151,7 @@ window.Pages=window.Pages||{};
   Pages.orders={
     render(){
       const rows=App.scoped(DB.ordersList);
+      const stats=DB.shopStats||{};
       const tbl=UI.table({
         pageSize:9, rows,
         onRow:o=>UI.drawer({
@@ -198,10 +202,10 @@ window.Pages=window.Pages||{};
         ${UI.pageHead('Orders','Shop orders paid in-app, collected at school.',
           `<button class="btn btn-ghost">${MCIcon('download')} Export</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'orders',tint:'t-green',label:'Orders This Month',value:F(412),deltaHtml:UI.delta(14,'up','vs April')})}
-          ${UI.statCard({icon:'waiting',tint:'t-amber',label:'Awaiting Collection',value:String(DB.ordersList.filter(o=>o.status==='Ready for Collection').length+15),deltaHtml:`<span class="delta flat">parents notified</span>`})}
-          ${UI.statCard({icon:'wallet',tint:'t-purple',label:'Avg Order Value',value:'R229',deltaHtml:UI.delta(3,'up','vs April')})}
-          ${UI.statCard({icon:'refresh',tint:'t-blue',label:'Refund Rate',value:'0.8%',deltaHtml:`<span class="delta flat">4 refunds</span>`})}
+          ${UI.statCard({icon:'orders',tint:'t-green',label:'Paid Orders This Month',value:F(Number(stats.paidOrders||0)),deltaHtml:`<span class="delta flat">completed PayFast payments</span>`})}
+          ${UI.statCard({icon:'waiting',tint:'t-amber',label:'Awaiting Collection',value:F(Number(stats.awaitingCollection||0)),deltaHtml:`<span class="delta flat">parents notified when marked ready</span>`})}
+          ${UI.statCard({icon:'wallet',tint:'t-purple',label:'Avg Order Value',value:R(Number(stats.averageOrderCents||0)/100),deltaHtml:`<span class="delta flat">paid orders this month</span>`})}
+          ${UI.statCard({icon:'check',tint:'t-blue',label:'Collected Orders',value:F(Number(stats.collectedOrders||0)),deltaHtml:`<span class="delta flat">current database records</span>`})}
         </div>
         <div class="card"><div class="card-head"><div><h3>Recent orders</h3></div><span class="spacer"></span>
           <div class="toolbar" style="margin:0"><div class="input-wrap" style="min-width:220px">${MCIcon('search')}<input id="oQ" placeholder="Search orders…"></div></div></div>

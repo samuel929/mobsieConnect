@@ -800,16 +800,6 @@ window.Pages=window.Pages||{};
       </button>
 
       <button
-        class="btn btn-ghost"
-        id="apInterview"
-      >
-        ${MCIcon(
-          "interviews"
-        )}
-        Schedule Interview
-      </button>
-
-      <button
         class="btn btn-green"
         id="apApprove"
       >
@@ -929,20 +919,6 @@ window.Pages=window.Pages||{};
           }
         );
 
-      root
-        .querySelector(
-          "#apInterview"
-        )
-        ?.addEventListener(
-          "click",
-          () => {
-            close();
-
-            scheduleInterviewModal(
-              a
-            );
-          }
-        );
     },
   });
 }
@@ -983,14 +959,18 @@ function formatDocumentSize(bytes) {
 
   const aState={tab:'All'};
   function renderApplications(){
-    const total=DB.appCounts.reduce((a,b)=>a+b,0);
+    const stats=DB.applicationStats||{};
+    const totals=stats.totals||{};
+    const total=Number(totals.applications||0);
     const stages=[
       {label:'Applications',value:total},
-      {label:'Docs complete',value:total-DB.appCounts[1]},
-      {label:'Interviewed',value:DB.appCounts[2]+DB.appCounts[3]+DB.appCounts[4]},
-      {label:'Approved',value:DB.appCounts[3]},
-      {label:'Enrolled',value:Math.max(1,DB.appCounts[3]-1)},
+      {label:'Docs complete',value:Number(totals.documentsComplete||0)},
+      {label:'Approved',value:Number(totals.approved||0)},
+      {label:'Enrolled',value:Number(totals.enrolled||0)},
     ];
+    const campuses=Array.isArray(stats.campuses)?stats.campuses:[];
+    const maxCampus=Math.max(1,...campuses.map(campus=>Number(campus.applications||0)));
+    const decision=stats.decisions||{};
     const isDeregistrations=aState.tab==='Deregistrations';
     const rows=isDeregistrations
       ? App.scoped(DB.deregistrations||[])
@@ -1039,7 +1019,7 @@ function formatDocumentSize(bytes) {
       ],
     });
     Pages.applications._tid=UI.lastTableId();
-    const tabs=['All','Pending Review','Documents Required','Interview Scheduled','Approved','Waiting List','Deregistrations'];
+    const tabs=['All','Pending Review','Documents Required','Approved','Waiting List','Deregistrations'];
     const counts={All:DB.applications.length};
     tabs.slice(1).forEach(t=>counts[t]=t==='Deregistrations'?(DB.deregistrations||[]).length:DB.applications.filter(a=>a.status===(t==='Waiting List'?'Waitlisted':t)).length);
     return `
@@ -1047,21 +1027,20 @@ function formatDocumentSize(bytes) {
         `<button class="btn btn-ghost">${MCIcon('download')} Export</button>
          <button class="btn btn-primary" id="newApp">${MCIcon('plus')} New Application</button>`)}
       <div class="grid" style="grid-template-columns:1.3fr 1fr 1fr;margin-bottom:20px" id="admTop">
-        ${UI.card('Admissions funnel',Charts.funnel({stages}),{sub:'This term · conversion from application to enrolment'})}
+        ${UI.card('Admissions funnel',Charts.funnel({stages}),{sub:'This month · conversion from application to enrolment'})}
         ${UI.card('This month',`
           <div class="grid cards-2" style="gap:10px">
             <div class="mini-stat"><span class="ms-ic t-orange">${MCIcon('applications')}</span><div><div class="ms-val">${total}</div><div class="ms-lbl">New applications</div></div></div>
-            <div class="mini-stat"><span class="ms-ic t-amber">${MCIcon('waiting')}</span><div><div class="ms-val">${DB.appCounts[0]}</div><div class="ms-lbl">Pending review</div></div></div>
-            <div class="mini-stat"><span class="ms-ic t-green">${MCIcon('check')}</span><div><div class="ms-val">${DB.appCounts[3]}</div><div class="ms-lbl">Approved</div></div></div>
-            <div class="mini-stat"><span class="ms-ic t-teal">${MCIcon('interviews')}</span><div><div class="ms-val">${DB.appCounts[2]}</div><div class="ms-lbl">Interviews set</div></div></div>
+            <div class="mini-stat"><span class="ms-ic t-amber">${MCIcon('waiting')}</span><div><div class="ms-val">${Number(totals.pendingReview||0)}</div><div class="ms-lbl">Pending review</div></div></div>
+            <div class="mini-stat"><span class="ms-ic t-green">${MCIcon('check')}</span><div><div class="ms-val">${Number(totals.approved||0)}</div><div class="ms-lbl">Approved</div></div></div>
           </div>
           <div class="divider"></div>
-          <div class="small muted">Average time to decision <b style="color:var(--ink-900)">3.2 days</b> · fastest campus <b style="color:var(--ink-900)">Cosmo City (0.9 d)</b></div>`)}
-        ${UI.card('Intake by campus',`<div class="rank-list">${DB.liveBranches().map((b,i)=>`
+          <div class="small muted">${decision.averageDecisionDays==null?'No completed decisions this month':`Average time to decision <b style="color:var(--ink-900)">${Number(decision.averageDecisionDays).toFixed(1)} days</b>${decision.fastestCampus?` · fastest campus <b style="color:var(--ink-900)">${esc(decision.fastestCampus)} (${Number(decision.fastestCampusDays||0).toFixed(1)} d)</b>`:''}`}</div>`)}
+        ${UI.card('Intake by campus',`<div class="rank-list">${campuses.map((b,i)=>`
           <div class="rank-item"><span class="rk">${i+1}</span>
-          <span class="r-txt"><div class="r-nm">${esc(b.name)}</div><div class="r-sub">${esc(b.city)}</div></span>
-          <span class="meter orange" style="flex:1"><i style="width:${88-i*14}%"></i></span>
-          <span class="r-val">${12-i*2}</span></div>`).join('')}</div>`,{sub:'Applications this month'})}
+          <span class="r-txt"><div class="r-nm">${esc(b.branchName)}</div><div class="r-sub">${esc(b.city)}</div></span>
+          <span class="meter orange" style="flex:1"><i style="width:${Math.round(Number(b.applications||0)/maxCampus*100)}%"></i></span>
+          <span class="r-val">${Number(b.applications||0)}</span></div>`).join('')}</div>`,{sub:'Applications this month'})}
       </div>
       <div class="card">
         <div class="card-body" style="padding-bottom:0">
@@ -1246,9 +1225,8 @@ function formatDocumentSize(bytes) {
           <div class="muted small">${esc(iv.grade)} · ${esc(iv.school)}</div></div>
           <span style="margin-left:auto">${UI.status(iv.status)}</span></div>
           ${UI.dl([['Parent',esc(iv.parent)],['Date',esc(iv.date)],['Time',iv.time],['Mode',esc(iv.mode)],['Interviewer',esc(iv.interviewer)],['Branch',esc(iv.branch)]])}`,
-        foot:`<button class="btn btn-ghost" id="ivRes">${MCIcon('calendar')} Reschedule</button><button class="btn btn-green" id="ivDone">${MCIcon('check')} Mark Completed</button>`,
+        foot:`<button class="btn btn-green" id="ivDone">${MCIcon('check')} Mark Completed</button>`,
         mount(root,close){
-          root.querySelector('#ivRes').addEventListener('click',()=>{close();scheduleInterviewModal(null,iv);});
           root.querySelector('#ivDone').addEventListener('click',()=>{
             iv.status='Completed';
             DB.log('Completed interview',iv.id+' — '+iv.child,'ok');
@@ -1267,8 +1245,7 @@ function formatDocumentSize(bytes) {
       ],
     });
     return `
-      ${UI.pageHead('Interviews','Admission interviews across all schools and branches.',
-        `<button class="btn btn-primary" id="ivNew">${MCIcon('plus')} Schedule Interview</button>`)}
+      ${UI.pageHead('Interviews','Admission interview records across all schools and branches.')}
       <div class="grid cards-3" style="margin-bottom:20px">${today.map(iv=>`
         <div class="card" style="padding:16px 18px">
           <div style="display:flex;align-items:center;gap:12px">${UI.avatar(iv.child,'lg')}
@@ -1287,9 +1264,7 @@ function formatDocumentSize(bytes) {
   }
   Pages.interviews={
     render:renderInterviews,
-    mount(root){
-      root.querySelector('#ivNew').addEventListener('click',()=>scheduleInterviewModal(null));
-    }
+    mount(){}
   };
 
   /* ---------- Waiting List ---------- */
