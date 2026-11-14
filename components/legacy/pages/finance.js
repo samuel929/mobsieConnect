@@ -189,18 +189,14 @@ window.Pages=window.Pages||{};
   /* ---------- Statements ---------- */
   Pages.statements={
     render(){
-      const now=new Date();
-      const periodKey=now.toISOString().slice(0,7);
-      const period=now.toLocaleDateString('en-ZA',{month:'long',year:'numeric'});
-      const rows=DB.liveBranches().map((b)=>{
-        const same=(row)=>String(row.branch||row.school||'').toLowerCase()===String(b.name).toLowerCase();
-        const invoices=(DB.invoices||[]).filter(same);
-        const payments=(DB.payments||[]).filter(same).filter(p=>['successful','paid','complete'].includes(String(p.status||'').toLowerCase()));
-        const invoiced=invoices.reduce((sum,row)=>sum+Number(row.amount||0),0);
-        const collected=payments.reduce((sum,row)=>sum+Number(row.amount||0),0);
-        return {branchId:b.id,school:b.name,period,periodKey,invoiced,collected,outstanding:Math.max(0,invoiced-collected),invoiceCount:invoices.length,paymentCount:payments.length};
-      });
-      const totalInvoiced=rows.reduce((sum,row)=>sum+row.invoiced,0),totalCollected=rows.reduce((sum,row)=>sum+row.collected,0);
+      const periodKey=DB.statements?.period||new Date().toISOString().slice(0,7);
+      const periodDate=new Date(periodKey+'-01T00:00:00');
+      const period=Number.isNaN(periodDate.getTime())?periodKey:periodDate.toLocaleDateString('en-ZA',{month:'long',year:'numeric'});
+      const rows=(DB.statements?.rows||[]).map(row=>({branchId:row.branchId,school:row.school,period,periodKey,
+        invoiced:Number(row.invoicedCents||0)/100,collected:Number(row.collectedCents||0)/100,outstanding:Number(row.outstandingCents||0)/100,
+        invoiceCount:Number(row.invoiceCount||0),paymentCount:Number(row.paymentCount||0)}));
+      const totalInvoiced=rows.reduce((sum,row)=>sum+row.invoiced,0),totalCollected=rows.reduce((sum,row)=>sum+row.collected,0),totalOutstanding=rows.reduce((sum,row)=>sum+row.outstanding,0);
+      const invoiceCount=rows.reduce((sum,row)=>sum+row.invoiceCount,0),paymentCount=rows.reduce((sum,row)=>sum+row.paymentCount,0);
       const tbl=UI.table({
         pageSize:8, rows,
         onRow:st=>UI.drawer({
@@ -227,9 +223,9 @@ window.Pages=window.Pages||{};
            <a class="btn btn-primary" href="/api/statements/pdf?period=${encodeURIComponent(periodKey)}">${MCIcon('download')} Download All PDF</a>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
           ${UI.statCard({icon:'statements',tint:'t-purple',label:'Campus Statements',value:String(rows.length),deltaHtml:`<span class="delta flat">${esc(period)}</span>`})}
-          ${UI.statCard({icon:'invoices',tint:'t-blue',label:'Total Invoiced',value:Rk(totalInvoiced),deltaHtml:`<span class="delta flat">${F((DB.invoices||[]).length)} invoices</span>`})}
-          ${UI.statCard({icon:'payments',tint:'t-green',label:'Total Collected',value:Rk(totalCollected),deltaHtml:`<span class="delta flat">successful payments</span>`})}
-          ${UI.statCard({icon:'alert',tint:'t-amber',label:'Outstanding',value:Rk(Math.max(0,totalInvoiced-totalCollected)),deltaHtml:`<span class="delta flat">current records</span>`})}
+          ${UI.statCard({icon:'invoices',tint:'t-blue',label:'Total Invoiced',value:Rk(totalInvoiced),deltaHtml:`<span class="delta flat">${F(invoiceCount)} invoices issued in period</span>`})}
+          ${UI.statCard({icon:'payments',tint:'t-green',label:'Total Collected',value:Rk(totalCollected),deltaHtml:`<span class="delta flat">${F(paymentCount)} completed PayFast payments</span>`})}
+          ${UI.statCard({icon:'alert',tint:'t-amber',label:'Outstanding Invoices',value:Rk(totalOutstanding),deltaHtml:`<span class="delta flat">unpaid at period end</span>`})}
         </div>
         <div class="card"><div class="card-head"><div><h3>Campus statements — ${esc(period)}</h3></div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;

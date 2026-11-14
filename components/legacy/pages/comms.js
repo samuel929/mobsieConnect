@@ -1433,22 +1433,18 @@ Pages.messages = {
   Pages.newsletters={
     render(){
       const sent=DB.newsletters.filter(n=>n.status==='Sent');
-      const recipients=sent.reduce((sum,n)=>sum+Number(n.recipients||0),0);
-      const avgOpen=sent.length?Math.round(sent.reduce((sum,n)=>sum+Number(n.openRate||0),0)/sent.length):0;
       const tbl=UI.table({
         pageSize:8, rows:DB.newsletters,
         onRow:n=>{const content=n.content||{};return UI.drawer({
           title:n.title,
           body:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${UI.status(n.status)} ${UI.badge(n.audience||'All campuses','purple')}</div>
-            ${UI.dl([['Published',esc(n.sent||'—')],['Recipients',n.recipients?F(n.recipients):'Not tracked'],['Open rate',n.openRate?`${n.openRate}%`:'Not tracked']])}
+            ${UI.dl([['Published',esc(n.sent||'—')]])}
             <div class="divider"></div>${Object.keys(content).length?`<div class="newsletter-saved-preview"><div class="newsletter-saved-brand"><img src="/mobsie-logo.png" alt="Mobsie Connect"></div><div class="newsletter-saved-hero" ${content.headerImageUrl?`style="background-image:linear-gradient(90deg,rgba(124,58,237,.72),rgba(249,115,22,.68)),url('${esc(content.headerImageUrl)}')"`:''}><b>${esc(content.heroTitle||n.title)}</b></div><div class="newsletter-saved-body"><h3>${esc(content.featureTitle||n.title)}</h3><p>${esc(content.intro||n.body||'')}</p>${content.featureImageUrl?`<img src="${esc(content.featureImageUrl)}" alt="">`:''}<p>${esc(content.featureCopy||'')}</p>${content.ctaText?`<a href="${esc(content.ctaLink||'#')}" target="_blank" rel="noopener">${esc(content.ctaText)}</a>`:''}</div><footer class="newsletter-saved-footer${content.footerImageUrl?' has-image':''}" ${content.footerImageUrl?`style="background-image:linear-gradient(rgba(15,23,42,.68),rgba(15,23,42,.68)),url('${esc(content.footerImageUrl)}')"`:''}><img src="/mobsie-logo.png" alt="Mobsie Connect"><p>${esc(content.footer||'')}</p></footer></div>`:`<h4 style="margin:0 0 8px">Newsletter message</h4><div style="white-space:pre-wrap;line-height:1.65;color:var(--ink-700)">${esc(n.body||n.message||'No message content is available.')}</div>`}`,
           foot:n.url?`<a class="btn btn-primary" href="${esc(n.url)}" target="_blank" rel="noopener">${MCIcon('eye')} Open attachment</a>`:''
         })},
         columns:[
           {key:'title',label:'Newsletter',render:r=>`<div class="cell-main">${esc(r.title)}</div><div class="cell-sub">${esc(r.audience)}</div>`},
           {key:'sent',label:'Sent'},
-          {key:'recipients',label:'Recipients',num:true,render:r=>r.recipients?F(r.recipients):'—'},
-          {key:'openRate',label:'Open rate',render:r=>r.status==='Draft'?'—':`<div style="display:flex;align-items:center;gap:10px;min-width:130px"><span class="meter purple"><i style="width:${r.openRate}%"></i></span><b style="font-variant-numeric:tabular-nums">${r.openRate}%</b></div>`},
           {key:'status',label:'Status',render:r=>UI.status(r.status)},
           {label:'',sortable:false,render:()=>`<button class="icon-btn">${MCIcon('chevRight')}</button>`},
         ],
@@ -1456,10 +1452,8 @@ Pages.messages = {
       return `
         ${UI.pageHead('Newsletters','Beautiful branded newsletters delivered to the app and inbox.',
           `<button class="btn btn-purple" id="newNl">${MCIcon('plus')} Compose Newsletter</button>`)}
-        <div class="grid cards-4" style="margin-bottom:20px">
+        <div class="grid cards-2" style="margin-bottom:20px">
           ${UI.statCard({icon:'newsletters',tint:'t-purple',label:'Published',value:String(sent.length),deltaHtml:`<span class="delta flat">saved in Neon</span>`})}
-          ${UI.statCard({icon:'eye',tint:'t-blue',label:'Avg Open Rate',value:avgOpen?avgOpen+'%':'—',deltaHtml:`<span class="delta flat">${avgOpen?'tracked sends':'analytics not yet available'}</span>`})}
-          ${UI.statCard({icon:'parents',tint:'t-green',label:'Recipients',value:recipients?F(recipients):'—',deltaHtml:`<span class="delta flat">${recipients?'across published newsletters':'not yet tracked'}</span>`})}
           ${UI.statCard({icon:'file',tint:'t-amber',label:'Drafts',value:String(DB.newsletters.filter(n=>n.status==='Draft').length),deltaHtml:`<span class="delta flat">not published</span>`})}
         </div>
         <div class="card"><div class="card-head"><div><h3>All newsletters</h3></div></div>

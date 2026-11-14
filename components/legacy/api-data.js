@@ -96,6 +96,7 @@
         request('/api/invoices'),
         request('/api/dashboard-notifications'),
         request('/api/mobile-admin/messages?limit=500'),
+        request(`/api/statements?period=${new Date().toISOString().slice(0,7)}`),
       );
     }
     const results = await Promise.allSettled(calls);
@@ -109,7 +110,7 @@
       events:results[3]?.status==='fulfilled',
     };
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages] = successful;
+    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages,statements] = successful;
 
     if (branches) {
       window.DB.branches = branches.map((branch) => ({
@@ -280,6 +281,7 @@
         status:statusLabel(invoice.status),paidAt:invoice.paidAt||'',createdAt:invoice.createdAt||'',
       }));
       window.DB.dashboardNotifications=Array.isArray(dashboardNotifications)?dashboardNotifications:[];
+      window.DB.statements=statements&&Array.isArray(statements.rows)?statements:{period:new Date().toISOString().slice(0,7),rows:[]};
       const conversationMap=new Map();
       (Array.isArray(dashboardMessages)?dashboardMessages:[]).forEach((message)=>{
         const id=message.parentAccountId;if(!id)return;
