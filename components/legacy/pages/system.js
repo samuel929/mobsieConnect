@@ -132,9 +132,14 @@ window.Pages=window.Pages||{};
           <div class="field"><label>User</label><input value="${esc(u.name)} · ${esc(u.email)}" disabled></div>
           <div class="form-row"><div class="field"><label>Dashboard role</label><select data-f="dashboardRoleId">${DB.rolePerms.roles.map(role=>`<option value="${esc(role.id)}" ${String(role.id)===String(u.dashboardRoleId)?'selected':''}>${esc(role.name)}</option>`).join('')}</select></div>
           <div class="field"><label>Campus access</label><select data-f="branchId"><option value="" ${!u.branchId?'selected':''}>Entire school group</option>${DB.liveBranches().map(branch=>`<option value="${esc(branch.id)}" ${String(branch.id)===String(u.branchId)?'selected':''}>${esc(branch.name)}</option>`).join('')}</select></div></div>
+          <div class="password-help" data-access-note style="margin-top:12px"></div>
+          <div class="field" style="margin-top:14px"><label>What this user can access</label><div data-permission-preview class="muted" style="line-height:1.7"></div></div>
         </section></div>`,
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Save access</button>`,
-        mount(r,close){r.querySelector('[data-x]').addEventListener('click',close);r.querySelector('[data-s]').addEventListener('click',async()=>{const v=UI.formVals(r),save=r.querySelector('[data-s]');if(!v.dashboardRoleId){UI.toast('Select a dashboard role','alert');return;}save.disabled=true;save.textContent='Saving…';try{const updated=await updateUser(u,{dashboardRoleId:v.dashboardRoleId,branchId:v.branchId||null});const oldRole=DB.rolePerms.roles.find(role=>role.id===u.dashboardRoleId);const nextRole=DB.rolePerms.roles.find(role=>role.id===v.dashboardRoleId);if(oldRole&&oldRole.id!==nextRole?.id)oldRole.users=Math.max(0,Number(oldRole.users||0)-1);if(nextRole&&oldRole?.id!==nextRole.id)nextRole.users=Number(nextRole.users||0)+1;Object.assign(u,{dashboardRoleId:v.dashboardRoleId,role:updated.dashboardRoleName||nextRole?.name||u.role,branchId:updated.branchId||'',scope:updated.branchName||'Entire school group'});close();UI.toast('User role and access updated.');App.refresh();}catch(error){save.disabled=false;save.textContent='Save access';UI.toast(error.message||'Could not update user access','alert');}});}
+        mount(r,close){
+          const roleSelect=r.querySelector('[data-f="dashboardRoleId"]'),branchSelect=r.querySelector('[data-f="branchId"]');
+          const refreshAccess=()=>{const role=DB.rolePerms.roles.find(item=>String(item.id)===String(roleSelect.value));const global=['Super Admin','School Owner'].includes(role?.name);branchSelect.disabled=global;if(global)branchSelect.value='';branchSelect.querySelector('option[value=""]').textContent=global?'Entire school group':'Select a campus';r.querySelector('[data-access-note]').innerHTML=`<span>${global?'Organisation-wide access to every campus.':`Campus-only access. ${role?.name||'This role'} will only see records for the selected campus.`}</span>`;const allowed=(role?.grants||[]).map((grant,index)=>grant?DB.rolePerms.perms[index]:null).filter(Boolean);r.querySelector('[data-permission-preview]').textContent=allowed.length?allowed.join(' · '):'No dashboard sections are enabled for this role.';};
+          roleSelect.addEventListener('change',refreshAccess);refreshAccess();r.querySelector('[data-x]').addEventListener('click',close);r.querySelector('[data-s]').addEventListener('click',async()=>{const v=UI.formVals(r),save=r.querySelector('[data-s]'),nextRole=DB.rolePerms.roles.find(role=>role.id===v.dashboardRoleId),global=['Super Admin','School Owner'].includes(nextRole?.name);if(!v.dashboardRoleId){UI.toast('Select a dashboard role','alert');return;}if(!global&&!v.branchId){UI.toast('Select the campus this user is allowed to access','alert');return;}save.disabled=true;save.textContent='Saving…';try{const updated=await updateUser(u,{dashboardRoleId:v.dashboardRoleId,branchId:global?null:v.branchId});const oldRole=DB.rolePerms.roles.find(role=>role.id===u.dashboardRoleId);if(oldRole&&oldRole.id!==nextRole?.id)oldRole.users=Math.max(0,Number(oldRole.users||0)-1);if(nextRole&&oldRole?.id!==nextRole.id)nextRole.users=Number(nextRole.users||0)+1;Object.assign(u,{dashboardRoleId:v.dashboardRoleId,role:updated.dashboardRoleName||nextRole?.name||u.role,branchId:updated.branchId||'',scope:updated.branchName||'Entire school group'});close();UI.toast('User role and access updated.');App.refresh();}catch(error){save.disabled=false;save.textContent='Save access';UI.toast(error.message||'Could not update user access','alert');}});}
       });
       const resetPassword=u=>UI.modal({title:'Set new password',body:`<div class="user-editor"><section class="user-editor__section"><div class="user-editor__section-title">New login password for ${esc(u.name)}</div><div class="field"><label>New password</label><input type="password" data-f="password" minlength="8" maxlength="128" autocomplete="new-password"></div><div class="field"><label>Confirm password</label><input type="password" data-f="confirmPassword" minlength="8" maxlength="128" autocomplete="new-password"></div></section></div>`,foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Update password</button>`,mount(r,close){r.querySelector('[data-x]').addEventListener('click',close);r.querySelector('[data-s]').addEventListener('click',async()=>{const v=UI.formVals(r),save=r.querySelector('[data-s]');if(v.password.length<8){UI.toast('Password must contain at least 8 characters','alert');return;}if(v.password!==v.confirmPassword){UI.toast('Passwords do not match','alert');return;}save.disabled=true;save.textContent='Updating…';try{await updateUser(u,{password:v.password});close();UI.toast('Password updated successfully.');}catch(error){save.disabled=false;save.textContent='Update password';UI.toast(error.message||'Could not update password','alert');}});}});
       root.addEventListener('click',e=>{
@@ -190,6 +195,12 @@ window.Pages=window.Pages||{};
               <div class="field"><label>Dashboard role</label><select data-f="dashboardRoleId">${DB.rolePerms.roles.map(role=>`<option value="${esc(role.id||'')}">${esc(role.name)}</option>`).join('')}</select></div>
               <div class="field"><label>Campus access</label><select data-f="branchId"><option value="">Entire school group</option>${DB.liveBranches().map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('')}</select></div>
             </div>
+            <div class="password-help" data-access-note style="margin-top:12px"></div>
+            <div class="field" style="margin-top:14px"><label>What this user can access</label><div data-permission-preview class="muted" style="line-height:1.7"></div></div>
+            <div class="form-row" style="margin-top:15px" data-teacher-scope hidden>
+              <div class="field"><label>Teacher profile</label><select data-f="teamMemberId"><option value="">Select a teacher</option></select><div class="password-help"><span>The profile email will be linked to this login.</span></div></div>
+              <div class="field"><label>Assigned class</label><input data-teacher-class value="Select a teacher profile" disabled></div>
+            </div>
           </section>
           <section class="user-editor__section"><div class="user-editor__section-title">Login password</div>
             <div class="form-row">
@@ -200,6 +211,37 @@ window.Pages=window.Pages||{};
         </div>`,
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Create User</button>`,
         mount(r,close){
+          const roleSelect=r.querySelector('[data-f="dashboardRoleId"]');
+          const branchSelect=r.querySelector('[data-f="branchId"]');
+          const teacherScope=r.querySelector('[data-teacher-scope]');
+          const teacherSelect=r.querySelector('[data-f="teamMemberId"]');
+          const teacherClass=r.querySelector('[data-teacher-class]');
+          const isTeacherRole=()=>DB.rolePerms.roles.find(role=>String(role.id)===String(roleSelect.value))?.name==='Teacher';
+          const updateTeacherProfiles=()=>{
+            const teacherRole=isTeacherRole();
+            const selectedRole=DB.rolePerms.roles.find(role=>String(role.id)===String(roleSelect.value));
+            const global=['Super Admin','School Owner'].includes(selectedRole?.name);
+            branchSelect.disabled=global;if(global)branchSelect.value='';
+            teacherScope.hidden=!teacherRole;
+            branchSelect.querySelector('option[value=""]').textContent=global?'Entire school group':'Select a campus';
+            r.querySelector('[data-access-note]').innerHTML=`<span>${global?'Organisation-wide access to every campus.':`Campus-only access. ${selectedRole?.name||'This role'} will only see records for the selected campus.`}</span>`;
+            const allowed=(selectedRole?.grants||[]).map((grant,index)=>grant?DB.rolePerms.perms[index]:null).filter(Boolean);
+            r.querySelector('[data-permission-preview]').textContent=allowed.length?allowed.join(' · '):'No dashboard sections are enabled for this role.';
+            if(!teacherRole){teacherSelect.value='';teacherClass.value='Not applicable';return;}
+            const options=DB.teachers.filter(teacher=>String(teacher.branch)===String(DB.branches.find(branch=>String(branch.id)===String(branchSelect.value))?.name||''));
+            teacherSelect.innerHTML=`<option value="">${branchSelect.value?'Select a teacher':'Select a campus first'}</option>`+options.map(teacher=>`<option value="${esc(teacher.id)}">${esc(teacher.name)} — ${esc(teacher.grade||teacher.cls||'Class not set')}</option>`).join('');
+            teacherClass.value='Select a teacher profile';
+          };
+          const updateTeacherClass=()=>{
+            const teacher=DB.teachers.find(item=>String(item.id)===String(teacherSelect.value));
+            teacherClass.value=teacher?.grade||teacher?.cls||'Class not set';
+            if(teacher?.email&&!r.querySelector('[data-f="email"]').value)r.querySelector('[data-f="email"]').value=teacher.email;
+            if(teacher?.name&&!r.querySelector('[data-f="name"]').value)r.querySelector('[data-f="name"]').value=teacher.name;
+          };
+          roleSelect.addEventListener('change',updateTeacherProfiles);
+          branchSelect.addEventListener('change',updateTeacherProfiles);
+          teacherSelect.addEventListener('change',updateTeacherClass);
+          updateTeacherProfiles();
           const password=r.querySelector('[data-f="password"]');
           const confirmPassword=r.querySelector('[data-f="confirmPassword"]');
           const lengthStatus=r.querySelector('[data-password-length]');
@@ -228,9 +270,12 @@ window.Pages=window.Pages||{};
             try{
               const selectedRole=DB.rolePerms.roles.find(role=>role.id===v.dashboardRoleId);
               const authRole=selectedRole?.name==='Teacher'?'TEACHER':'PRINCIPAL';
-              const response=await MobsieApi.mutate('/api/users',{method:'POST',body:JSON.stringify({name:v.name,email:v.email,password:v.password,role:authRole,dashboardRoleId:v.dashboardRoleId||null,branchId:v.branchId||null})});
+              const global=['Super Admin','School Owner'].includes(selectedRole?.name);
+              if(!global&&!v.branchId){save.disabled=false;save.textContent='Create User';UI.toast('Select the campus this user is allowed to access','alert');return;}
+              if(authRole==='TEACHER'&&(!v.branchId||!v.teamMemberId)){save.disabled=false;save.textContent='Create User';UI.toast('Select the teacher’s campus and teacher profile','alert');return;}
+              const response=await MobsieApi.mutate('/api/users',{method:'POST',body:JSON.stringify({name:v.name,email:v.email,password:v.password,role:authRole,dashboardRoleId:v.dashboardRoleId||null,branchId:global?null:(v.branchId||null),teamMemberId:v.teamMemberId||null})});
               const account=response.data[0];
-              DB.adminUsers.unshift({id:account.id,name:account.name,email:account.email,role:selectedRole?.name||'User',roleValue:account.role,branchId:account.branchId||'',scope:account.branchName||'Entire school group',last:'Never',status:'Active'});
+              DB.adminUsers.unshift({id:account.id,name:account.name,email:account.email,role:selectedRole?.name||'User',roleValue:account.role,branchId:account.branchId||'',className:account.className||'',scope:[account.branchName,account.className].filter(Boolean).join(' · ')||'Entire school group',last:'Never',status:'Active'});
               if(selectedRole)selectedRole.users=Number(selectedRole.users||0)+1;
               DB.log('Created user',v.email+' — '+(selectedRole?.name||authRole),'ok');
               close();UI.toast('User created. They can now log in with this password.');App.refresh();

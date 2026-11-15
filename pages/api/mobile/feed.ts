@@ -84,10 +84,36 @@ export default apiHandler<Record<string, unknown>>(
         `SELECT state FROM control_centre_state WHERE tenant_id=$1 LIMIT 1`,
         [parent.tenantId],
       ),
-      query(`SELECT id,title,body,audience,content,published_at::text AS "publishedAt" FROM newsletters
-             WHERE tenant_id=$1 AND (branch_id IS NULL OR branch_id=ANY(SELECT branch_id FROM students WHERE parent_account_id=$2))
-               AND status='SENT'
-             ORDER BY published_at DESC LIMIT 100`,[parent.tenantId,parent.id]),
+      query(`WITH parent_branches AS (
+               SELECT DISTINCT s.branch_id AS id,b.name
+                 FROM students s
+                 JOIN branches b ON b.id=s.branch_id
+                 LEFT JOIN applications a ON a.id=s.application_id
+                WHERE s.tenant_id=$1
+                  AND (s.parent_account_id=$2 OR a.parent_account_id=$2)
+               UNION
+               SELECT DISTINCT ap.branch_id AS id,b.name
+                 FROM applications a
+                 JOIN application_preferences ap ON ap.application_id=a.id
+                 JOIN branches b ON b.id=ap.branch_id
+                WHERE a.tenant_id=$1 AND a.parent_account_id=$2
+             )
+             SELECT n.id,n.title,n.body,n.audience,n.content,n.published_at::text AS "publishedAt"
+               FROM newsletters n
+              WHERE n.tenant_id=$1
+                AND n.status='SENT'
+                AND (
+                  (n.branch_id IS NULL AND lower(trim(n.audience)) IN ('all campuses','all campus'))
+                  OR n.branch_id IN (SELECT id FROM parent_branches)
+                  OR (
+                    n.branch_id IS NULL
+                    AND EXISTS (
+                      SELECT 1 FROM parent_branches pb
+                       WHERE lower(trim(pb.name))=lower(trim(n.audience))
+                    )
+                  )
+                )
+              ORDER BY n.published_at DESC LIMIT 100`,[parent.tenantId,parent.id]),
     ]);
     const state = controlCentre.rows[0]?.state;
     res.status(200).json({ ok: true, data: {
@@ -97,7 +123,7 @@ export default apiHandler<Record<string, unknown>>(
       attendance: attendance.rows,
       messages: messages.rows,
       homework: listFromState(state, "homeworkList"),
-      newsletters: newsletters.rows.length ? newsletters.rows : listFromState(state, "newsletters"),
+      newsletters: newsletters.rows,
       gallery: listFromState(state, "albums"),
     } });
   },

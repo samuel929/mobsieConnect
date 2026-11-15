@@ -1,5 +1,6 @@
 import { apiHandler, pageLimit } from "@/server/api";
 import { query } from "@/server/db";
+import { requireDashboardPermission } from "@/server/auth";
 
 const METHOD_LABELS: Record<string,string> = {
   cc: "Credit card",
@@ -23,6 +24,7 @@ function methodLabel(value:unknown){
 export default apiHandler<unknown>(
   { methods:["GET"], roles:["PRINCIPAL"] },
   async(req,res,context)=>{
+    await requireDashboardPermission(context.user!,"Finance");
     const result=await query<Record<string,unknown>>(
       `WITH payment_feed AS (
          SELECT
@@ -52,6 +54,7 @@ export default apiHandler<unknown>(
          LEFT JOIN application_preferences preference ON preference.application_id=application.id
          LEFT JOIN branches branch ON branch.id=preference.branch_id
          WHERE application.tenant_id=$1
+           AND ($2::uuid IS NULL OR preference.branch_id=$2)
 
          UNION ALL
 
@@ -84,6 +87,7 @@ export default apiHandler<unknown>(
            WHERE item.order_id=shop_order.id
          ) items ON true
          WHERE shop_order.tenant_id=$1
+           AND ($2::uuid IS NULL OR shop_order.branch_id=$2)
        )
        SELECT *,
          "paymentReference" AS "applicationReference",
@@ -91,8 +95,8 @@ export default apiHandler<unknown>(
          "createdAtValue"::text AS "createdAt"
        FROM payment_feed
        ORDER BY COALESCE("paidAtValue","createdAtValue") DESC, id DESC
-       LIMIT $2`,
-      [context.user!.tenantId,pageLimit(req.query.limit,1000)],
+       LIMIT $3`,
+      [context.user!.tenantId,context.user!.branchId,pageLimit(req.query.limit,1000)],
     );
     const payments=result.rows.map((row)=>({
       ...row,

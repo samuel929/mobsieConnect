@@ -20,9 +20,7 @@ export default apiHandler<string>(
   async (req, res, context) => {
     const model = one(req.query.model) ?? "";
     if (!EXPORTABLE.has(model)) throw new AppError(422, "INVALID_EXPORT", "Unknown export model.");
-    if (context.user!.role === "TEACHER" && !["learners", "homeworkList", "reportRuns", "events"].includes(model)) {
-      throw new AppError(403, "FORBIDDEN", "Teachers cannot export this model.");
-    }
+    if (context.user!.role === "TEACHER") throw new AppError(403, "FORBIDDEN", "Teacher exports are disabled until a class-scoped export is selected.");
     const result = await query<{ state: Record<string, unknown> }>(
       "SELECT state FROM control_centre_state WHERE tenant_id = $1",
       [context.user!.tenantId],

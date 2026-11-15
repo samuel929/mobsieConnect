@@ -5,6 +5,7 @@ import { query } from "@/server/db";
 import { createAndSendNotification } from "@/server/expoPush";
 import { publishRealtime } from "@/server/realtime";
 import { requireDashboardPermission } from "@/server/auth";
+import { requireTeacherScope } from "@/server/teacherScope";
 
 const replySchema = z.object({
   parentAccountId: z.string().uuid(),
@@ -37,6 +38,7 @@ export default apiHandler<MessageRow[]>(
 
   async (req, res, { user }) => {
     await requireDashboardPermission(user!, "Messages");
+    const teacherScope = await requireTeacherScope(user!);
     if (req.method === "PATCH") {
       const input = readSchema.parse(req.body);
       await query(
@@ -44,9 +46,10 @@ export default apiHandler<MessageRow[]>(
          WHERE tenant_id=$1 AND parent_account_id=$2 AND sender_type='PARENT'
            AND ($3::text='PRINCIPAL' OR EXISTS (
              SELECT 1 FROM parent_accounts p WHERE p.id=parent_messages.parent_account_id
-               AND (p.preferred_branch_id=$4::uuid OR EXISTS (
-                 SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$4::uuid))))`,
-        [user!.tenantId,input.parentAccountId,user!.role,user!.branchId],
+               AND EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$4::uuid
+                 AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')
+                   OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))))`,
+        [user!.tenantId,input.parentAccountId,user!.role,teacherScope?.branchId??user!.branchId,teacherScope?.className??null],
       );
       res.status(200).json({ok:true,data:[]});return;
     }
@@ -74,12 +77,13 @@ export default apiHandler<MessageRow[]>(
             AND is_active = true
             AND (
               $3::uuid IS NULL OR $4::text = 'PRINCIPAL'
-              OR preferred_branch_id = $3
-              OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=parent_accounts.id AND s.branch_id=$3)
+              OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=parent_accounts.id AND s.branch_id=$3
+                AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')
+                  OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))
             )
           LIMIT 1
         `,
-        [input.parentAccountId, user!.tenantId, user!.branchId, user!.role],
+        [input.parentAccountId, user!.tenantId, teacherScope?.branchId??user!.branchId, user!.role, teacherScope?.className??null],
       );
 
       if (!parent.rows[0]) {
@@ -202,8 +206,9 @@ export default apiHandler<MessageRow[]>(
         WHERE m.tenant_id = $1
           AND (
             $3::uuid IS NULL OR $4::text = 'PRINCIPAL'
-            OR p.preferred_branch_id = $3
-            OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3)
+            OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3
+              AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')
+                OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))
           )
 
         ORDER BY
@@ -212,7 +217,7 @@ export default apiHandler<MessageRow[]>(
 
         LIMIT $2
       `,
-      [user!.tenantId, limit, user!.branchId, user!.role],
+      [user!.tenantId, limit, teacherScope?.branchId??user!.branchId, user!.role, teacherScope?.className??null],
     );
 
     res.status(200).json({

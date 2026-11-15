@@ -1,6 +1,6 @@
 import { apiHandler, one, pageLimit } from "@/server/api";
 import { createApplicationAccessToken } from "@/server/applicationAccess";
-import { getRequestUser, requireRole } from "@/server/auth";
+import { getRequestUser, requireDashboardPermission, requireRole } from "@/server/auth";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { getOptionalParent } from "@/server/parentAuth";
@@ -97,6 +97,7 @@ export default apiHandler<unknown>(
 
     const user = await getRequestUser(req);
     requireRole(user, ["PRINCIPAL"]);
+    await requireDashboardPermission(user, "Admissions");
 
     const status = one(req.query.status) ?? "";
     const search = (one(req.query.search) ?? "").trim();
@@ -186,9 +187,10 @@ export default apiHandler<unknown>(
            a.parent_name ILIKE '%' || $3 || '%' OR
            a.child_name ILIKE '%' || $3 || '%'
          )
+         AND ($4::uuid IS NULL OR p.branch_id = $4)
        ORDER BY a.created_at DESC, a.id DESC
-       LIMIT $4`,
-      [user.tenantId, status, search, pageLimit(req.query.limit, 500)],
+       LIMIT $5`,
+      [user.tenantId, status, search, user.branchId, pageLimit(req.query.limit, 500)],
     );
 
     res.status(200).json({ ok: true, data: result.rows });

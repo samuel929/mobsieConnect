@@ -4,19 +4,21 @@ import { AppError } from "@/server/errors";
 import { dailyActivityUpdateSchema } from "@/server/validation";
 import { publishRealtime } from "@/server/realtime";
 import { requireDashboardPermission } from "@/server/auth";
+import { requireTeacherScope } from "@/server/teacherScope";
 
 export default apiHandler<unknown>(
   { methods: ["PUT", "DELETE"] },
   async (req, res, context) => {
     const user = context.user!;
     await requireDashboardPermission(user, "Daily activities");
+    const teacherScope = await requireTeacherScope(user);
     const id = one(req.query.id);
     if (!id) throw new AppError(422, "ACTIVITY_REQUIRED", "An activity id is required.");
     if (req.method === "DELETE") {
       const removed = await query<{ id: string }>(
         `DELETE FROM daily_activities WHERE id=$1 AND tenant_id=$2
-          AND ($3::uuid IS NULL OR $4::text='PRINCIPAL' OR branch_id=$3) RETURNING id`,
-        [id,user.tenantId,user.branchId,user.role],
+          AND ($3::uuid IS NULL OR $4::text='PRINCIPAL' OR (branch_id=$3 AND regexp_replace(lower(trim(class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g'))) RETURNING id`,
+        [id,user.tenantId,teacherScope?.branchId??user.branchId,user.role,teacherScope?.className??null],
       );
       if (!removed.rows[0]) throw new AppError(404, "ACTIVITY_NOT_FOUND", "This activity no longer exists.");
       publishRealtime("daily_activity", user.tenantId);
@@ -24,17 +26,20 @@ export default apiHandler<unknown>(
       return;
     }
     const input = dailyActivityUpdateSchema.parse({ ...req.body, id });
-    const current = await query<{ startTime: string; endTime: string; branchId: string }>(
-      `SELECT branch_id AS "branchId", to_char(start_time, 'HH24:MI') AS "startTime", to_char(end_time, 'HH24:MI') AS "endTime"
+    const current = await query<{ startTime: string; endTime: string; branchId: string; className: string }>(
+      `SELECT branch_id AS "branchId",class_name AS "className", to_char(start_time, 'HH24:MI') AS "startTime", to_char(end_time, 'HH24:MI') AS "endTime"
        FROM daily_activities
        WHERE id=$1 AND tenant_id=$2
-         AND ($3::uuid IS NULL OR $4::text='PRINCIPAL' OR branch_id=$3)`,
-      [id, user.tenantId, user.branchId, user.role],
+         AND ($3::uuid IS NULL OR $4::text='PRINCIPAL' OR (branch_id=$3 AND regexp_replace(lower(trim(class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))`,
+      [id, user.tenantId, teacherScope?.branchId??user.branchId, user.role,teacherScope?.className??null],
     );
     if (!current.rows[0]) throw new AppError(404, "ACTIVITY_NOT_FOUND", "This activity no longer exists.");
     const targetBranchId = input.branchId ?? current.rows[0].branchId;
     if (user.role === "TEACHER" && user.branchId !== targetBranchId) {
       throw new AppError(403, "FORBIDDEN", "Teachers can only move activities within their own branch.");
+    }
+    if (teacherScope && (input.className??current.rows[0].className).replace(/[_\s-]+/g,"").toLowerCase()!==teacherScope.className.replace(/[_\s-]+/g,"").toLowerCase()) {
+      throw new AppError(403,"FORBIDDEN","Teachers can only update activities for their assigned class.");
     }
     if (input.branchId) {
       const branch = await query<{ id: string }>(

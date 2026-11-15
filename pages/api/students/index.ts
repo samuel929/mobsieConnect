@@ -2,6 +2,7 @@ import { apiHandler, one, pageLimit } from "@/server/api";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { studentSchema, studentUpdateSchema } from "@/server/validation";
+import { requireTeacherScope } from "@/server/teacherScope";
 
 type StudentRow = {
   id: string;
@@ -21,9 +22,10 @@ export default apiHandler<unknown>(
   { methods: ["GET", "POST", "PUT", "DELETE"], roles: ["PRINCIPAL", "TEACHER"] },
   async (req, res, context) => {
     const user = context.user!;
+    const teacherScope = await requireTeacherScope(user);
     const assertBranchAccess = async (id: string) => {
-      if (user.role === "TEACHER" && user.branchId !== id) {
-        throw new AppError(403, "FORBIDDEN", "Teachers can only manage learners at their own campus.");
+      if (user.branchId && user.branchId !== id) {
+        throw new AppError(403, "FORBIDDEN", "Your role can only manage learners at its assigned campus.");
       }
       const branch = await query<{ id: string }>("SELECT id FROM branches WHERE id=$1 AND tenant_id=$2 LIMIT 1", [id, user.tenantId]);
       if (!branch.rows[0]) throw new AppError(422, "BRANCH_NOT_FOUND", "Select a current campus.");
@@ -31,6 +33,9 @@ export default apiHandler<unknown>(
     if (req.method === "POST") {
       const input = studentSchema.parse(req.body);
       await assertBranchAccess(input.branchId);
+      if (teacherScope && ![input.grade,input.className].some(value=>value.replace(/[_\s-]+/g,"").toLowerCase()===teacherScope.className.replace(/[_\s-]+/g,"").toLowerCase())) {
+        throw new AppError(403,"FORBIDDEN","Teachers can only manage learners in their assigned class.");
+      }
       const saved = await query<StudentRow>(
         `INSERT INTO students (tenant_id,branch_id,name,date_of_birth,grade,class_name,parent_name,attendance_rate,enrollment_status,onboarding_profile)
          VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10::jsonb)
@@ -42,9 +47,12 @@ export default apiHandler<unknown>(
     }
     if (req.method === "PUT") {
       const input = studentUpdateSchema.parse(req.body);
-      const existing = await query<{ branchId: string }>("SELECT branch_id AS \"branchId\" FROM students WHERE id=$1 AND tenant_id=$2", [input.id,user.tenantId]);
+      const existing = await query<{ branchId: string; grade: string; className: string }>("SELECT branch_id AS \"branchId\",grade,class_name AS \"className\" FROM students WHERE id=$1 AND tenant_id=$2", [input.id,user.tenantId]);
       if (!existing.rows[0]) throw new AppError(404, "STUDENT_NOT_FOUND", "That learner no longer exists.");
       await assertBranchAccess(input.branchId ?? existing.rows[0].branchId);
+      if (teacherScope && ![input.grade??existing.rows[0].grade,input.className??existing.rows[0].className].some(value=>value.replace(/[_\s-]+/g,"").toLowerCase()===teacherScope.className.replace(/[_\s-]+/g,"").toLowerCase())) {
+        throw new AppError(403,"FORBIDDEN","Teachers can only manage learners in their assigned class.");
+      }
       const saved = await query<StudentRow>(
         `UPDATE students SET branch_id=COALESCE($3,branch_id),name=COALESCE($4,name),date_of_birth=COALESCE($5::date,date_of_birth),grade=COALESCE($6,grade),class_name=COALESCE($7,class_name),parent_name=COALESCE($8,parent_name),attendance_rate=COALESCE($9,attendance_rate),enrollment_status=COALESCE($10,enrollment_status),onboarding_profile=COALESCE($11::jsonb,onboarding_profile),updated_at=now()
          WHERE id=$1 AND tenant_id=$2
@@ -57,16 +65,19 @@ export default apiHandler<unknown>(
     if (req.method === "DELETE") {
       const id = one(req.query.id);
       if (!id) throw new AppError(422, "STUDENT_REQUIRED", "Choose a learner to delete.");
-      const existing = await query<{ branchId: string }>("SELECT branch_id AS \"branchId\" FROM students WHERE id=$1 AND tenant_id=$2", [id,user.tenantId]);
+      const existing = await query<{ branchId: string; grade: string; className: string }>("SELECT branch_id AS \"branchId\",grade,class_name AS \"className\" FROM students WHERE id=$1 AND tenant_id=$2", [id,user.tenantId]);
       if (!existing.rows[0]) throw new AppError(404, "STUDENT_NOT_FOUND", "That learner no longer exists.");
       await assertBranchAccess(existing.rows[0].branchId);
+      if (teacherScope && ![existing.rows[0].grade,existing.rows[0].className].some(value=>value.replace(/[_\s-]+/g,"").toLowerCase()===teacherScope.className.replace(/[_\s-]+/g,"").toLowerCase())) {
+        throw new AppError(403,"FORBIDDEN","Teachers can only manage learners in their assigned class.");
+      }
       await query("DELETE FROM students WHERE id=$1 AND tenant_id=$2", [id,user.tenantId]);
       res.status(200).json({ ok: true, data: { id } });
       return;
     }
     const limit = pageLimit(req.query.limit);
     const search = (one(req.query.search) ?? "").trim();
-    const branchId = user.role === "TEACHER" ? user.branchId : one(req.query.branchId);
+    const branchId = user.branchId ?? one(req.query.branchId);
     const cursor = one(req.query.cursor);
     const result = await query<StudentRow>(
       `SELECT s.id, s.name, s.date_of_birth::text AS "dateOfBirth",b.name AS "branchName", s.grade,
@@ -79,8 +90,11 @@ export default apiHandler<unknown>(
          AND ($3 = '' OR to_tsvector('simple', s.name || ' ' || s.parent_name || ' ' || s.grade)
               @@ plainto_tsquery('simple', $3))
          AND ($4::uuid IS NULL OR s.id < $4::uuid)
+         AND ($6::text IS NULL OR
+           regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($6)),'[_ -]+','','g') OR
+           regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($6)),'[_ -]+','','g'))
        ORDER BY s.created_at DESC, s.id DESC LIMIT $5`,
-      [user.tenantId, branchId ?? null, search, cursor ?? null, limit + 1],
+      [user.tenantId, branchId ?? null, search, cursor ?? null, limit + 1, teacherScope?.className ?? null],
     );
     const hasMore = result.rows.length > limit;
     const rows = result.rows.slice(0, limit);

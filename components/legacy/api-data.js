@@ -112,7 +112,15 @@
       events:results[3]?.status==='fulfilled',
     };
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    const [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages,statements,applicationStats,shopStats] = successful;
+    let [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages,statements,applicationStats,shopStats] = successful;
+    if (!principal) {
+      const scopedResults=await Promise.allSettled([
+        request('/api/parents?limit=500'),
+        request('/api/mobile-admin/messages?limit=500'),
+      ]);
+      parents=scopedResults[0].status==='fulfilled'?scopedResults[0].value.data:null;
+      dashboardMessages=scopedResults[1].status==='fulfilled'?scopedResults[1].value.data:null;
+    }
 
     if (branches) {
       window.DB.branches = branches.map((branch) => ({
@@ -224,7 +232,8 @@
         id:account.id,name:account.name,email:account.email,
         role:account.dashboardRoleName||(account.role==='PRINCIPAL'?'Principal':'Teacher'),roleValue:account.role,
         dashboardRoleId:account.dashboardRoleId||'',roleColor:account.dashboardRoleColor||'',
-        branchId:account.branchId||'',scope:account.branchName||'Entire school group',
+        branchId:account.branchId||'',teamMemberId:account.teamMemberId||'',className:account.className||'',
+        scope:[account.branchName,account.className].filter(Boolean).join(' · ')||'Entire school group',
         last:account.lastLoginAt?new Date(account.lastLoginAt).toLocaleString('en-ZA'):'Never',
         status:account.isActive?'Active':'Suspended',
       }));
@@ -248,7 +257,8 @@
         publishedAt:newsletter.publishedAt,recipients:0,openRate:0,status:String(newsletter.status||'SENT').toLowerCase()==='draft'?'Draft':'Sent',content:newsletter.content||{},
       }));
     }
-    if (principal) {
+    if (principal || Array.isArray(dashboardMessages)) {
+      if (principal) {
       // Payments are authoritative financial records. Never retain seed data or
       // browser-created rows when the live endpoint is empty or unavailable.
       window.DB.payments=(Array.isArray(payments)?payments:[]).map((payment)=>({
@@ -286,6 +296,7 @@
       window.DB.statements=statements&&Array.isArray(statements.rows)?statements:{period:new Date().toISOString().slice(0,7),rows:[]};
       window.DB.applicationStats=applicationStats&&applicationStats.totals?applicationStats:null;
       window.DB.shopStats=shopStats||null;
+      }
       const conversationMap=new Map();
       (Array.isArray(dashboardMessages)?dashboardMessages:[]).forEach((message)=>{
         const id=message.parentAccountId;if(!id)return;

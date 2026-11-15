@@ -1019,9 +1019,9 @@ function formatDocumentSize(bytes) {
       ],
     });
     Pages.applications._tid=UI.lastTableId();
-    const tabs=['All','Pending Review','Documents Required','Approved','Waiting List','Deregistrations'];
+    const tabs=['All','Pending Review','Documents Required','Approved','Waiting List'];
     const counts={All:DB.applications.length};
-    tabs.slice(1).forEach(t=>counts[t]=t==='Deregistrations'?(DB.deregistrations||[]).length:DB.applications.filter(a=>a.status===(t==='Waiting List'?'Waitlisted':t)).length);
+    tabs.slice(1).forEach(t=>counts[t]=DB.applications.filter(a=>a.status===(t==='Waiting List'?'Waitlisted':t)).length);
     return `
       ${UI.pageHead('Applications','Every admission application across your campuses, from first click to enrolment.',
         `<button class="btn btn-ghost">${MCIcon('download')} Export</button>
@@ -1208,8 +1208,50 @@ function formatDocumentSize(bytes) {
           });
         }
       }));
+      if(window.MobsieOpenNewApplication&&na){
+        window.MobsieOpenNewApplication=false;
+        na.click();
+      }
     }
   };
+
+  /* ---------- Deregistrations ---------- */
+  function renderDeregistrations(){
+    const rows=App.scoped(DB.deregistrations||[]);
+    const scheduled=rows.filter(item=>String(item.status).toLowerCase()==='scheduled').length;
+    const completed=rows.filter(item=>['completed','processed'].includes(String(item.status).toLowerCase())).length;
+    const tbl=UI.table({
+      pageSize:10,rows,
+      onRow:r=>UI.drawer({
+        title:'Deregistration — '+esc(r.learner),
+        body:`${UI.dl([
+          ['Learner',esc(r.learner)],['Parent / guardian',esc(r.parent)],
+          ['Parent email',esc(r.email||'—')],['Branch',esc(r.branch||'—')],
+          ['Last attendance date',esc(r.lastDay||'—')],['Scheduled removal',esc(r.removalDate||'—')],
+          ['Reason',esc(r.reason||'—')],['Status',UI.status(r.status)]
+        ])}${r.comments?`<div class="divider"></div><h4>Parent comments</h4><p class="small">${esc(r.comments)}</p>`:''}`
+      }),
+      columns:[
+        {key:'learner',label:'Learner',render:r=>UI.personCell(r.learner,r.branch)},
+        {key:'parent',label:'Parent / guardian',render:r=>`<div>${esc(r.parent)}</div><div class="cell-sub">${esc(r.email||'')}</div>`},
+        {key:'lastDay',label:'Last attendance',render:r=>esc(r.lastDay||'—')},
+        {key:'removalDate',label:'Removal date',render:r=>esc(r.removalDate||'—')},
+        {key:'reason',label:'Reason'},
+        {key:'status',label:'Status',render:r=>UI.status(r.status)},
+        {label:'',sortable:false,render:()=>`<button class="icon-btn">${MCIcon('chevRight')}</button>`},
+      ],
+    });
+    return `
+      ${UI.pageHead('Deregistrations','Learner deregistration requests and scheduled removals across all campuses.')}
+      <div class="grid cards-3" style="margin-bottom:20px">
+        ${UI.statCard({icon:'applications',tint:'t-orange',label:'Total Requests',value:F(rows.length),deltaHtml:`<span class="delta flat">live records</span>`})}
+        ${UI.statCard({icon:'clock',tint:'t-amber',label:'Scheduled',value:F(scheduled),deltaHtml:`<span class="delta flat">awaiting removal</span>`})}
+        ${UI.statCard({icon:'check',tint:'t-green',label:'Completed',value:F(completed),deltaHtml:`<span class="delta flat">processed records</span>`})}
+      </div>
+      <div class="card"><div class="card-head"><div><h3>All deregistrations</h3><div class="sub">Data is synced directly from parent and dashboard requests.</div></div></div>
+        <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>`;
+  }
+  Pages.deregistrations={render:renderDeregistrations,mount(){}};
 
   /* ---------- Interviews ---------- */
   function renderInterviews(){

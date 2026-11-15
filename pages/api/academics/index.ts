@@ -1,5 +1,6 @@
 import { apiHandler, one, pageLimit, pageNumber } from "@/server/api";
 import { query } from "@/server/db";
+import { requireTeacherScope } from "@/server/teacherScope";
 
 type AcademicRow = {
   id: string;
@@ -18,7 +19,8 @@ export default apiHandler<AcademicRow[]>(
   { methods: ["GET"], roles: ["PRINCIPAL", "TEACHER"] },
   async (req, res, context) => {
     const user = context.user!;
-    const branchId = user.role === "TEACHER" ? user.branchId : one(req.query.branchId);
+    const teacherScope=await requireTeacherScope(user);
+    const branchId = teacherScope?.branchId ?? one(req.query.branchId);
     const studentId = one(req.query.studentId);
     const year = Number(one(req.query.year) ?? new Date().getFullYear());
     const term = one(req.query.term) ? Number(one(req.query.term)) : null;
@@ -35,8 +37,9 @@ export default apiHandler<AcademicRow[]>(
          AND ($3::uuid IS NULL OR a.student_id = $3::uuid)
          AND a.year = $4
          AND ($5::smallint IS NULL OR a.term = $5::smallint)
+         AND ($8::text IS NULL OR regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($8)),'[_ -]+','','g') OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($8)),'[_ -]+','','g'))
        ORDER BY s.name, a.subject LIMIT $6 OFFSET $7`,
-      [user.tenantId, branchId ?? null, studentId ?? null, year, term, limit, (page - 1) * limit],
+      [user.tenantId, branchId ?? null, studentId ?? null, year, term, limit, (page - 1) * limit,teacherScope?.className??null],
     );
     const total = Number(result.rows[0]?.totalCount ?? 0);
     res.status(200).json({

@@ -99,8 +99,7 @@ window.Pages=window.Pages||{};
       Pages.learners._tid=UI.lastTableId();
       return `
         ${UI.pageHead('Learners','Every enrolled child across your campuses — profiles, attendance and fees at a glance.',
-          `<button class="btn btn-ghost" id="lImport">${MCIcon('upload')} Bulk Import</button>
-           <button class="btn btn-primary" id="lEnrol">${MCIcon('plus')} Enrol Learner</button>`)}
+          `<button class="btn btn-ghost" id="lImport">${MCIcon('upload')} Bulk Import</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
           ${UI.statCard({icon:'learners',tint:'t-purple',label:'Total Learners',value:F(Number(stats.totalLearners||0)),deltaHtml:`<span class="delta flat">${F(Number(stats.addedThisMonth||0))} added this month</span>`})}
           ${UI.statCard({icon:'check',tint:'t-green',label:'Enrolled & Active',value:DB.safeNumber(stats.activePercentage).toFixed(1).replace('.0','')+'%',deltaHtml:`<span class="delta flat">${F(stats.activeLearners)} active learners</span>`})}
@@ -122,7 +121,15 @@ window.Pages=window.Pages||{};
           []);
         UI.toast('Learner import template downloaded');
       });
-      root.querySelector('#lEnrol').addEventListener('click',()=>UI.modal({
+      root.querySelector('#lEnrol')?.addEventListener('click',()=>{
+        window.MobsieOpenNewApplication=true;
+        App.go('applications');
+      });
+      /* The legacy direct-enrolment form is intentionally disabled. New
+         learners must use the canonical Applications onboarding workflow so
+         every guardian, learner, preference, fee and document field stays in
+         sync with New Application. */
+      if(false)UI.modal({
         title:'Enrol Learner',
         body:`<div class="people-edit-form learner-enrol-form">
           <p class="people-edit-form__intro">Add a learner using the same complete information collected during mobile onboarding.</p>
@@ -179,33 +186,89 @@ window.Pages=window.Pages||{};
             }
           });
         }
-      }));
+      });
     }
   };
 
   /* ---------- Parents ---------- */
-  function openParent(p){
-    const kids=DB.learners.filter(l=>l.parent===p.name);
+  async function openParent(p){
+    let detail;
+    try{
+      const response=await window.MobsieApi.request(`/api/parents/${encodeURIComponent(p.id)}`);
+      detail=response.data;
+    }catch(error){
+      UI.toast(error.message||'Could not load the parent profile','alert');
+      return;
+    }
+    const profile=detail.parent||p;
+    const kids=Array.isArray(detail.children)?detail.children:[];
+    const applications=Array.isArray(detail.applications)?detail.applications:[];
+    const payments=Array.isArray(detail.payments)?detail.payments:[];
+    const orders=Array.isArray(detail.orders)?detail.orders:[];
+    const invoices=Array.isArray(detail.invoices)?detail.invoices:[];
+    const completedPayments=payments.filter(payment=>String(payment.status).toUpperCase()==='COMPLETE');
+    const paidOrders=orders.filter(order=>String(order.paymentStatus).toUpperCase()==='COMPLETE');
+    const paidInvoices=invoices.filter(invoice=>String(invoice.status).toUpperCase()==='PAID');
+    const totalPaid=completedPayments.reduce((sum,payment)=>sum+Number(payment.amountCents||0),0)+paidOrders.reduce((sum,order)=>sum+Number(order.totalCents||0),0)+paidInvoices.reduce((sum,invoice)=>sum+Number(invoice.amountCents||0),0);
+    const outstanding=invoices.filter(invoice=>String(invoice.status).toUpperCase()==='DUE').reduce((sum,invoice)=>sum+Number(invoice.amountCents||0),0);
+    const money=cents=>R(Number(cents||0)/100);
+    const date=value=>value?new Date(value).toLocaleString('en-ZA'):'—';
+    const label=value=>String(value||'').toLowerCase().split('_').map(part=>part.charAt(0).toUpperCase()+part.slice(1)).join(' ');
+    const transactionRows=[
+      ...payments.map(payment=>({
+        type:'Application payment',description:payment.description||`Application fee${payment.childName?` — ${payment.childName}`:''}`,
+        reference:payment.reference||payment.merchantPaymentId,amountCents:payment.amountCents,status:payment.status,
+        method:payment.method||'PayFast',at:payment.paidAt||payment.createdAt,
+      })),
+      ...orders.map(order=>({
+        type:String(order.paymentStatus).toUpperCase()==='COMPLETE'?'Shop payment':'Shop order',description:(order.items||[]).map(item=>`${item.quantity} × ${item.name}`).join(', ')||'Shop order',
+        reference:order.reference,amountCents:order.totalCents,status:order.paymentStatus||order.status,
+        method:order.paymentMethod||(order.paymentStatus?'PayFast':'Not paid'),at:order.paidAt||order.createdAt,
+      })),
+      ...paidInvoices.map(invoice=>({
+        type:'Invoice payment',description:invoice.description,
+        reference:invoice.invoiceNumber,amountCents:invoice.amountCents,status:invoice.status,
+        method:'Invoice payment',at:invoice.paidAt||invoice.createdAt,
+      })),
+    ].sort((a,b)=>new Date(b.at||0)-new Date(a.at||0));
     UI.drawer({
       title:'Parent Profile',
       body:`
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">${UI.avatar(p.name,'xl')}
-          <div><div style="font-size:17px;font-weight:800;color:var(--ink-900)">${esc(p.name)}</div>
-          <div class="muted small">${esc(p.school)} · ${esc(p.branch)}</div></div>
-          <span style="margin-left:auto">${UI.status(p.status)}</span></div>
-        ${UI.dl([['Email',esc(p.email)],['Phone',esc(p.phone)],['Children',String(p.children)],['Joined',esc(p.joined)],
-          ['Balance',p.balance?`<b style="color:var(--red-600)">${R(p.balance)} outstanding</b>`:'<b style="color:var(--green-600)">Fully paid</b>']])}
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">${UI.avatar(profile.name,'xl')}
+          <div><div style="font-size:17px;font-weight:800;color:var(--ink-900)">${esc(profile.name)}</div>
+          <div class="muted small">${esc(profile.branchName||p.branch||'Not assigned')}</div></div>
+          <span style="margin-left:auto">${UI.status(profile.isActive===false?'Inactive':'Active')}</span></div>
+        ${UI.dl([['Email',esc(profile.email||p.email)],['Phone',esc(profile.phone||p.phone)],['Campus',esc(profile.branchName||p.branch||'Not assigned')],
+          ['Children',String(kids.length)],['Applications',String(applications.length)],['Joined',date(profile.createdAt)],['Last app login',date(profile.lastLoginAt)]])}
         <div class="divider"></div>
         <h4 style="margin-bottom:10px">Children${kids.length?` (${kids.length} on record)`:''}</h4>
         ${kids.length?`<div class="feed">${kids.map(k=>`
           <div class="feed-item">${UI.avatar(k.name)}<div class="f-txt"><div class="f-main"><b>${esc(k.name)}</b></div>
-          <div class="f-sub">${esc(k.grade)} ${esc(k.cls)} · ${k.attendance}% attendance</div></div></div>`).join('')}</div>`
+          <div class="f-sub">${esc(label(k.grade))}${k.className?` · Class ${esc(k.className)}`:''} · ${esc(k.branchName||'Not assigned')} · ${esc(label(k.enrollmentStatus))}</div></div></div>`).join('')}</div>`
         :`<p class="small muted">Linked child records appear here.</p>`}
         <div class="divider"></div>
-        <h4 style="margin-bottom:10px">Engagement</h4>
-        ${UI.meterRow('App opens',86,'purple')}
-        ${UI.meterRow('Messages read',94)}
-        ${UI.meterRow('Payments on time',p.balance?58:98,p.balance?'amber':'')}`,
+        <h4 style="margin-bottom:10px">Applications${applications.length?` (${applications.length})`:''}</h4>
+        ${applications.length?`<div class="feed">${applications.map(application=>`
+          <div class="feed-item"><div class="f-txt"><div class="f-main"><b>${esc(application.reference)}</b> · ${esc(application.childName)}</div>
+          <div class="f-sub">${esc(label(application.applicationType))} · ${esc(label(application.status))} · ${esc(application.branchName||'Not assigned')} · ${date(application.submittedAt||application.createdAt)}</div></div></div>`).join('')}</div>`
+        :`<p class="small muted">No applications are linked to this parent.</p>`}
+        <div class="divider"></div>
+        <h4 style="margin-bottom:10px">Financial summary</h4>
+        ${UI.dl([['Total recorded payments',`<b style="color:var(--green-600)">${money(totalPaid)}</b>`],
+          ['Outstanding invoices',outstanding?`<b style="color:var(--red-600)">${money(outstanding)}</b>`:'<b style="color:var(--green-600)">R0.00</b>'],
+          ['Shop orders',String(orders.length)],['Invoices',String(invoices.length)]])}
+        <div class="divider"></div>
+        <h4 style="margin-bottom:10px">Payments and purchases${transactionRows.length?` (${transactionRows.length})`:''}</h4>
+        ${transactionRows.length?`<div class="feed">${transactionRows.map(transaction=>`
+          <div class="feed-item"><div class="f-txt"><div class="f-main"><b>${esc(transaction.type)}</b> · ${money(transaction.amountCents)}</div>
+          <div class="f-sub">${esc(transaction.description)}<br>${esc(transaction.reference||'No reference')} · ${esc(label(transaction.method))} · ${esc(label(transaction.status))} · ${date(transaction.at)}</div></div></div>`).join('')}</div>`
+        :`<p class="small muted">No payment or purchase records are linked to this parent yet.</p>`}
+        <div class="divider"></div>
+        <h4 style="margin-bottom:10px">Invoices${invoices.length?` (${invoices.length})`:''}</h4>
+        ${invoices.length?`<div class="feed">${invoices.map(invoice=>`
+          <div class="feed-item"><div class="f-txt"><div class="f-main"><b>${esc(invoice.invoiceNumber)}</b> · ${money(invoice.amountCents)}</div>
+          <div class="f-sub">${esc(invoice.description)} · Due ${esc(invoice.dueOn||'—')} · ${esc(label(invoice.status))}</div></div></div>`).join('')}</div>`
+        :`<p class="small muted">No invoices are linked to this parent.</p>`}`,
       foot:`<button class="btn btn-ghost" data-edit>${MCIcon('edit')} Edit</button>
             <button class="btn btn-ghost" data-delete>${MCIcon('delete')} Delete</button>
             <button class="btn btn-primary" data-go="messages">${MCIcon('messages')} Send Message</button>`,

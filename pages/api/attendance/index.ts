@@ -2,12 +2,14 @@ import { apiHandler } from "@/server/api";
 import { withTransaction } from "@/server/db";
 import { attendanceRegisterSchema } from "@/server/validation";
 import { AppError } from "@/server/errors";
+import { requireTeacherScope } from "@/server/teacherScope";
 
 export default apiHandler<{ saved: number }>(
   { methods: ["POST"], roles: ["PRINCIPAL", "TEACHER"] },
   async (req, res, context) => {
     const input = attendanceRegisterSchema.parse(req.body);
     const user = context.user!;
+    const teacherScope = await requireTeacherScope(user);
     if (user.role === "TEACHER" && user.branchId !== input.branchId) {
       res.status(403).json({ ok: false, error: { code: "FORBIDDEN", message: "Teachers can only capture their own branch." } });
       return;
@@ -15,11 +17,12 @@ export default apiHandler<{ saved: number }>(
     await withTransaction(async (client) => {
       const valid = await client.query(
         `SELECT count(*)::int AS count FROM students
-         WHERE tenant_id = $1 AND branch_id = $2 AND id = ANY($3::uuid[])`,
-        [user.tenantId, input.branchId, input.entries.map((entry) => entry.studentId)],
+         WHERE tenant_id = $1 AND branch_id = $2 AND id = ANY($3::uuid[])
+           AND ($4::text IS NULL OR regexp_replace(lower(trim(grade)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g') OR regexp_replace(lower(trim(class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g'))`,
+        [user.tenantId, input.branchId, input.entries.map((entry) => entry.studentId),teacherScope?.className??null],
       );
       if (valid.rows[0].count !== input.entries.length) {
-        throw new AppError(422, "INVALID_STUDENTS", "One or more students do not belong to this branch.");
+        throw new AppError(422, "INVALID_STUDENTS", "One or more learners are outside your assigned campus or class.");
       }
       for (const entry of input.entries) {
         await client.query(

@@ -79,6 +79,12 @@ export default apiHandler<Record<string, unknown>>(
         item.child_date_of_birth,item.current_grade,parent.name,
       ],
     );
+    await query(
+      `UPDATE parent_accounts
+          SET preferred_branch_id=$2,updated_at=now()
+        WHERE id=$1 AND tenant_id=$3`,
+      [parent.id, item.branch_id, parent.tenantId],
+    );
     // Completing the parent-side enrolment does not approve admission. A
     // principal must approve the application before the app unlocks Home.
     await query("UPDATE applications SET status='PENDING_REVIEW',updated_at=now() WHERE id=$1", [item.id]);

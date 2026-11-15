@@ -198,6 +198,14 @@ export default apiHandler<Record<string, unknown>>(
           application.parentName,
         ],
       );
+      if (application.parentAccountId) {
+        await query(
+          `UPDATE parent_accounts
+              SET preferred_branch_id=$2,updated_at=now()
+            WHERE id=$1 AND tenant_id=$3`,
+          [application.parentAccountId, application.branchId, application.tenantId],
+        );
+      }
     }
 
     if (input.consents) {

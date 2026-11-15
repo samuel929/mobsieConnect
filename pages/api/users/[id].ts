@@ -4,6 +4,7 @@ import { apiHandler, one } from "@/server/api";
 import { withTransaction } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { requireDashboardPermission } from "@/server/auth";
+import { dashboardRoleAccessPolicy } from "@/server/roleAccess";
 
 type DeletedUser = {
   id: string;
@@ -47,12 +48,29 @@ export default apiHandler<DeletedUser>(
         if (input.dashboardRoleId) {
           const role = await client.query<{ name: string }>("SELECT name FROM dashboard_roles WHERE id=$1 AND tenant_id=$2", [input.dashboardRoleId, user!.tenantId]);
           if (!role.rows[0]) throw new AppError(422, "ROLE_NOT_FOUND", "Select a valid dashboard role.");
+          const policy = dashboardRoleAccessPolicy(role.rows[0].name);
+          if (policy.isGlobal) input.branchId = null;
+          const requestedBranch = Object.prototype.hasOwnProperty.call(input, "branchId") ? input.branchId : undefined;
+          const effectiveBranch = policy.isGlobal ? null : (requestedBranch ?? (await client.query<{ branchId: string | null }>("SELECT branch_id AS \"branchId\" FROM users WHERE id=$1", [id])).rows[0]?.branchId ?? null);
+          if (policy.requiresBranch && !effectiveBranch) {
+            throw new AppError(422, "CAMPUS_SCOPE_REQUIRED", `${role.rows[0].name} access must be assigned to a campus.`);
+          }
+          if (policy.requiresTeacherProfile) {
+            const teacher = await client.query(
+              `SELECT 1 FROM users u JOIN team_members member
+                 ON member.tenant_id=u.tenant_id AND member.branch_id=$3
+                AND lower(member.contact_email::text)=lower(u.email::text)
+               WHERE u.id=$1 AND u.tenant_id=$2 LIMIT 1`,
+              [id, user!.tenantId, effectiveBranch],
+            );
+            if (!teacher.rows[0]) throw new AppError(422, "TEACHER_SCOPE_REQUIRED", "Link this login email to a teacher profile in the selected campus before assigning the Teacher role.");
+          }
           await client.query(
             `INSERT INTO user_dashboard_roles(user_id,role_id) VALUES($1,$2)
              ON CONFLICT(user_id) DO UPDATE SET role_id=EXCLUDED.role_id,assigned_at=now()`,
             [id, input.dashboardRoleId],
           );
-          await client.query("UPDATE users SET role=$2,updated_at=now() WHERE id=$1", [id, role.rows[0].name === "Teacher" ? "TEACHER" : "PRINCIPAL"]);
+          await client.query("UPDATE users SET role=$2,branch_id=$3,updated_at=now() WHERE id=$1", [id, policy.requiresTeacherProfile ? "TEACHER" : "PRINCIPAL", effectiveBranch]);
         }
         const passwordHash = input.password ? await bcrypt.hash(input.password, 12) : null;
         const result = await client.query<DeletedUser & { branchId: string | null; branchName: string | null; isActive: boolean; dashboardRoleId: string | null; dashboardRoleName: string | null }>(

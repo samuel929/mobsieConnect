@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { dailyActivitySchema } from "@/server/validation";
 import { publishRealtime } from "@/server/realtime";
 import { requireDashboardPermission } from "@/server/auth";
+import { requireTeacherScope } from "@/server/teacherScope";
 
 export default apiHandler<unknown>(
   { methods: ["GET", "POST"] },
@@ -11,6 +12,7 @@ export default apiHandler<unknown>(
     res.setHeader("Cache-Control", "no-store, max-age=0");
     const user = context.user!;
     await requireDashboardPermission(user, "Daily activities");
+    const teacherScope = await requireTeacherScope(user);
     const branchId = one(req.query.branchId);
     const className = one(req.query.className);
     const activityDate = one(req.query.date);
@@ -19,8 +21,11 @@ export default apiHandler<unknown>(
       if (input.endTime <= input.startTime) {
         throw new AppError(422, "INVALID_ACTIVITY_TIME", "End time must be after the start time.");
       }
-      if (user.role === "TEACHER" && user.branchId !== input.branchId) {
-        throw new AppError(403, "FORBIDDEN", "Teachers can only manage their own branch.");
+      if (user.branchId && user.branchId !== input.branchId) {
+        throw new AppError(403, "FORBIDDEN", "Your role can only manage activities at its assigned campus.");
+      }
+      if (teacherScope && input.className.replace(/[_\s-]+/g,"").toLowerCase()!==teacherScope.className.replace(/[_\s-]+/g,"").toLowerCase()) {
+        throw new AppError(403,"FORBIDDEN","Teachers can only create activities for their assigned class.");
       }
       const branch = await query<{ id: string }>(
         "SELECT id FROM branches WHERE id=$1 AND tenant_id=$2 LIMIT 1",
@@ -49,9 +54,10 @@ export default apiHandler<unknown>(
        WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR d.branch_id=$2)
          AND ($3::text IS NULL OR lower(trim(d.class_name))=lower(trim($3)))
          AND ($4::date IS NULL OR d.activity_date=$4::date)
-         AND ($5::uuid IS NULL OR $6::text='PRINCIPAL' OR d.branch_id=$5)
+         AND ($5::uuid IS NULL OR d.branch_id=$5)
+         AND ($7::text IS NULL OR regexp_replace(lower(trim(d.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($7)),'[_ -]+','','g'))
        ORDER BY d.activity_date DESC,d.start_time ASC`,
-      [user.tenantId,branchId ?? null,className ?? null,activityDate ?? null,user.branchId,user.role],
+      [user.tenantId,user.branchId ?? branchId ?? null,teacherScope?.className ?? className ?? null,activityDate ?? null,user.branchId,user.role,teacherScope?.className??null],
     );
     res.status(200).json({ ok: true, data: rows.rows });
   },

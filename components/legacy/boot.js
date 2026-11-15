@@ -19,3 +19,4 @@ import './pages/media';
 import './pages/shop';
 import './pages/insights';
 import './pages/system';
+import './pages/profile';

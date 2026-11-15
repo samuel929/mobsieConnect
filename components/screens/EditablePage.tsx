@@ -6,6 +6,7 @@ export type ControlCentreRoute =
   | 'branches'
   | 'applications'
   | 'waiting-list'
+  | 'deregistrations'
   | 'learners'
   | 'parents'
   | 'teachers'
@@ -28,7 +29,8 @@ export type ControlCentreRoute =
   | 'documents'
   | 'users'
   | 'roles'
-  | 'audit';
+  | 'audit'
+  | 'profile';
 
 type EditablePageProps = {
   route: ControlCentreRoute;

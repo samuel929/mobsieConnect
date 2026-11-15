@@ -8,6 +8,7 @@ import {
   assertCurrentSession,
   getRequestUser,
   requireRole,
+  SESSION_COOKIE,
 } from "@/server/auth";
 
 type BranchRow = Branch & { totalCount: string };
@@ -20,7 +21,11 @@ export default apiHandler<unknown>(
     // Branches are public read-only data for the parent app. Every mutation is
     // restricted to a current principal session; a tenant query string must
     // never be enough to create, edit or delete a campus.
-    const user = req.method !== "GET" ? await getRequestUser(req) : null;
+    const user = req.method !== "GET"
+      ? await getRequestUser(req)
+      : req.cookies?.[SESSION_COOKIE]
+        ? await getRequestUser(req)
+        : null;
     if (req.method !== "GET") {
       requireRole(user!, ["PRINCIPAL"]);
       await assertCurrentSession(user!);
@@ -177,6 +182,10 @@ export default apiHandler<unknown>(
     }
     values.push(search ? `%${search}%` : "");
     const searchIndex = values.length;
+    // Users assigned to a campus in Roles & Access only receive that campus.
+    // Organisation-wide roles have a null branch and retain the full list.
+    values.push(user?.branchId ?? null);
+    const branchScopeIndex = values.length;
     const result = await query<BranchRow>(
       `SELECT b.id, b.name, b.slug,
         COALESCE(
@@ -204,6 +213,7 @@ export default apiHandler<unknown>(
        FROM branches b
        WHERE b.tenant_id = $1 ${cursorSql}
          AND b.status = 'ACTIVE'
+         AND ($${branchScopeIndex}::uuid IS NULL OR b.id=$${branchScopeIndex})
          AND ($${searchIndex} = '' OR b.name ILIKE $${searchIndex} OR b.city ILIKE $${searchIndex})
        ORDER BY b.created_at DESC, b.id DESC
        LIMIT $2`,

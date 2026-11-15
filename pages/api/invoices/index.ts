@@ -30,6 +30,7 @@ export default apiHandler<Record<string,unknown>[]>({methods:["GET","POST"],role
       [input.parentAccountId,user!.tenantId],
     );
     if(!parent.rows[0]) throw new AppError(422,"PARENT_NOT_FOUND","Select an active parent account.");
+    if(user!.branchId && parent.rows[0].branchId!==user!.branchId) throw new AppError(403,"FORBIDDEN","You can only invoice parents at your assigned campus.");
     const today=new Date().toISOString().slice(0,10);
     if(input.dueOn<today) throw new AppError(422,"INVALID_DUE_DATE","The due date cannot be in the past.");
     const invoiceNumber=`INV-${new Date().getFullYear()}-${randomUUID().replace(/-/g,"").slice(0,8).toUpperCase()}`;
@@ -44,6 +45,6 @@ export default apiHandler<Record<string,unknown>[]>({methods:["GET","POST"],role
     const row=await query<Record<string,unknown>>(`${invoiceSelect} WHERE i.id=$1 AND i.tenant_id=$2`,[saved.rows[0].id,user!.tenantId]);
     res.status(201).json({ok:true,data:row.rows});return;
   }
-  const rows=await query<Record<string,unknown>>(`${invoiceSelect} WHERE i.tenant_id=$1 ORDER BY i.created_at DESC`,[user!.tenantId]);
+  const rows=await query<Record<string,unknown>>(`${invoiceSelect} WHERE i.tenant_id=$1 AND ($2::uuid IS NULL OR i.branch_id=$2) ORDER BY i.created_at DESC`,[user!.tenantId,user!.branchId]);
   res.status(200).json({ok:true,data:rows.rows});
 });

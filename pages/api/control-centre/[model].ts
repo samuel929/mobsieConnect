@@ -8,7 +8,9 @@ const MODELS = new Set([
   "albums", "products", "ordersList", "documentsList", "adminUsers", "auditLog",
   "events", "homeworkList", "reportRuns",
 ]);
-const TEACHER_MODELS = new Set(["learners", "events", "homeworkList", "reportRuns"]);
+// Teacher data must come from the relational, class-scoped APIs. Persisted
+// control-centre arrays are tenant-wide and must never be exposed to teachers.
+const TEACHER_MODELS = new Set<string>();
 
 type ModelRow = { value: Record<string, unknown>; totalCount: string };
 

@@ -12,7 +12,8 @@
       {route:'branches',label:'Branches',icon:'branches'}]},
     {section:'Admissions',items:[
       {route:'applications',label:'Applications',icon:'applications',badge:()=>DB.counters.pendingReview},
-      {route:'waiting-list',label:'Waiting List',icon:'waiting'}]},
+      {route:'waiting-list',label:'Waiting List',icon:'waiting'},
+      {route:'deregistrations',label:'Deregistrations',icon:'applications'}]},
     {section:'Students',items:[
       {route:'learners',label:'Learners',icon:'learners'},
       {route:'parents',label:'Parents',icon:'parents'},
@@ -46,7 +47,7 @@
   ];
   const ROUTE_PERMISSION={dashboard:'View dashboard',schools:'Manage school profile',branches:'Manage campuses',
     learners:'Manage learners',parents:'Manage learners',teachers:'Manage teachers','daily-activity':'Daily activities',
-    applications:'Admissions','waiting-list':'Admissions',attendance:'Manage learners',homework:'Manage learners',
+    applications:'Admissions','waiting-list':'Admissions',deregistrations:'Admissions',attendance:'Manage learners',homework:'Manage learners',
     reports:'Reports & analytics',calendar:'Communications',payments:'Finance',invoices:'Finance',statements:'Finance',
     messages:'Messages',newsletters:'Communications',push:'Communications',feedback:'Communications',
     gallery:'Media & gallery',products:'Finance',orders:'Finance',inventory:'Finance',documents:'Manage school profile',
@@ -61,7 +62,7 @@
     ctx:{school:null,branch:null},
     route:'dashboard',
     can,
-    go(r){ const permission=ROUTE_PERMISSION[r]||'View dashboard';if(!can(permission)){UI.toast('Your role does not have permission to open this page.','alert');return;}if(window.__mobsieNavigate) window.__mobsieNavigate(r); else setRoute(r); },
+    go(r){ const permission=ROUTE_PERMISSION[r]||'View dashboard';if(r!=='profile'&&!can(permission)){UI.toast('Your role does not have permission to open this page.','alert');return;}if(window.__mobsieNavigate) window.__mobsieNavigate(r); else setRoute(r); },
     school(){ return this.ctx.school?DB.schools.find(s=>s.id===this.ctx.school):null; },
     branchObj(){ return this.ctx.branch?DB.branches.find(b=>b.id===this.ctx.branch):null; },
     scopeLabel(){ const s=this.school(); return s?s.name:(DB.schools.length===1?DB.schools[0].name:'All Schools'); },
@@ -145,10 +146,10 @@
   /* ---- Topbar ---- */
   function renderTopbar(){
     const tb=$('#topbar'); if(!tb) return;
-    const pageTitle=findNav(App.route)?.label||'Dashboard';
+    const pageTitle=App.route==='profile'?'My Profile':(findNav(App.route)?.label||'Dashboard');
     const br=App.branchObj();
     const user=window.MobsieSession||{name:'User',role:'PRINCIPAL'};
-    const roleLabel=user.role==='TEACHER'?'Teacher':'Principal';
+    const roleLabel=DB.currentRole?.name||(user.role==='TEACHER'?'Teacher':'Principal');
     const notifications=Array.isArray(DB.dashboardNotifications)?DB.dashboardNotifications:[];
     const unreadNotifications=notifications.filter(item=>!item.read).length;
     const unreadMessages=(DB.conversations||[]).reduce((total,conversation)=>total+Number(conversation.unread||0),0);
@@ -179,7 +180,7 @@
     $('#tbChat').addEventListener('click',()=>App.go('messages'));
     $('#tbUser').addEventListener('click',e=>{
       UI.menu(e.currentTarget,[
-        {icon:'users',label:'Profile',onClick:()=>UI.toast('Profile coming soon')},
+        {icon:'users',label:'Profile',onClick:()=>App.go('profile')},
         {icon:'logout',label:'Sign out',onClick:async()=>{await fetch('/api/auth/logout',{method:'POST'});location.href='/login';}},
       ],{align:'right'});
     });
@@ -227,7 +228,7 @@
   }
   function setRoute(route){
     const desired=(route&&window.Pages[route])?route:'dashboard';
-    App.route=can(ROUTE_PERMISSION[desired]||'View dashboard')?desired:'dashboard';
+    App.route=(desired==='profile'||can(ROUTE_PERMISSION[desired]||'View dashboard'))?desired:'dashboard';
     const app=$('#app'); if(app) app.classList.remove('side-open');
     rerender();
   }
