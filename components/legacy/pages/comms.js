@@ -12,7 +12,12 @@ const mState = {
   loading: false,
   error: "",
   conversations: [],
+  loadedBranchId: null,
 };
+
+function selectedMessageBranchId() {
+  return window.App?.ctx?.branch || "";
+}
 
 
 /**
@@ -73,8 +78,11 @@ function fullMessageTime(value) {
  * on MobsieApi having a .get() function.
  */
 async function fetchMessages() {
+  const branchId = selectedMessageBranchId();
+  const params = new URLSearchParams({ limit: "500" });
+  if (branchId) params.set("branchId", branchId);
   const response = await fetch(
-    "/api/mobile-admin/messages?limit=500",
+    `/api/mobile-admin/messages?${params.toString()}`,
     {
       method: "GET",
       credentials: "include",
@@ -271,6 +279,7 @@ async function loadMessages(root) {
 
     mState.conversations =
       buildConversations(rows);
+    mState.loadedBranchId = selectedMessageBranchId();
 
     /**
      * You can continue exposing them through DB
@@ -334,6 +343,8 @@ function availableParents() {
     ? DB.parents
     : [];
 
+  const branchId = selectedMessageBranchId();
+
   return parents
     .map(parent => {
       const parentAccountId =
@@ -347,7 +358,8 @@ function availableParents() {
       };
     })
     .filter(parent =>
-      Boolean(parent.parentAccountId),
+      Boolean(parent.parentAccountId) &&
+      (!branchId || String(parent.branchId || "") === String(branchId)),
     );
 }
 
@@ -593,6 +605,7 @@ async function sendSchoolMessage(
       body: JSON.stringify({
         parentAccountId,
         body,
+        branchId: selectedMessageBranchId() || null,
       }),
     },
   );
@@ -1007,7 +1020,7 @@ Pages.messages = {
      */
     if (
       !skipLoad &&
-      !mState.loaded
+      (!mState.loaded || mState.loadedBranchId !== selectedMessageBranchId())
     ) {
       loadMessages(root);
 
@@ -1087,7 +1100,7 @@ Pages.messages = {
               App.refreshChrome?.();
               if(previousUnread>0){
                 try{
-                  await MobsieApi.mutate('/api/mobile-admin/messages',{method:'PATCH',body:JSON.stringify({parentAccountId:conversation.parentAccountId||conversation.id})});
+                  await MobsieApi.mutate('/api/mobile-admin/messages',{method:'PATCH',body:JSON.stringify({parentAccountId:conversation.parentAccountId||conversation.id,branchId:selectedMessageBranchId()||null})});
                 }catch(error){
                   conversation.unread=previousUnread;App.refreshChrome?.();UI.toast(error.message||'Could not mark messages as read','alert');
                 }

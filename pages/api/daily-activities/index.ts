@@ -55,9 +55,16 @@ export default apiHandler<unknown>(
          AND ($3::text IS NULL OR lower(trim(d.class_name))=lower(trim($3)))
          AND ($4::date IS NULL OR d.activity_date=$4::date)
          AND ($5::uuid IS NULL OR d.branch_id=$5)
-         AND ($7::text IS NULL OR regexp_replace(lower(trim(d.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($7)),'[_ -]+','','g'))
+         AND ($6::text IS NULL OR regexp_replace(lower(trim(d.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($6)),'[_ -]+','','g'))
        ORDER BY d.activity_date DESC,d.start_time ASC`,
-      [user.tenantId,user.branchId ?? branchId ?? null,teacherScope?.className ?? className ?? null,activityDate ?? null,user.branchId,user.role,teacherScope?.className??null],
+      [
+        user.tenantId,
+        user.branchId ?? branchId ?? null,
+        teacherScope?.className ?? className ?? null,
+        activityDate ?? null,
+        user.branchId,
+        teacherScope?.className ?? null,
+      ],
     );
     res.status(200).json({ ok: true, data: rows.rows });
   },

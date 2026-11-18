@@ -358,8 +358,7 @@ window.Pages=window.Pages||{};
       Pages.parents._tid=UI.lastTableId();
       return `
         ${UI.pageHead('Mobile App Parents','Every parent account registered in the Mobsie Connect app, including incomplete and inactive accounts.',
-          `<button class="btn btn-ghost" id="pEmailAll">${MCIcon('campaigns')} Email All</button>
-           <button class="btn btn-primary" id="pAdd">${MCIcon('plus')} Add Parent</button>`)}
+          `<button class="btn btn-ghost" id="pEmailAll">${MCIcon('campaigns')} Email All</button>`)}
         <div class="grid cards-4" style="margin-bottom:20px">
           ${UI.statCard({icon:'parents',tint:'t-blue',label:'Total Parents',value:F(totalParents),deltaHtml:`<span class="delta flat">${F(newThisMonth)} joined this month</span>`})}
           ${UI.statCard({icon:'push',tint:'t-purple',label:'App Adoption',value:adoption+'%',deltaHtml:`<span class="delta flat">parents with a registered device</span>`})}
@@ -400,28 +399,6 @@ window.Pages=window.Pages||{};
               const response=await MobsieApi.mutate('/api/parents/email-all',{method:'POST',body:JSON.stringify({subject:v.subject,body:v.body,branchId:v.branchId||null})});
               close();UI.toast(`Email sent to ${response.data.sent} parent${response.data.sent===1?'':'s'}.`);
             }catch(error){button.disabled=false;button.textContent='Send Email';UI.toast(error.message||'Could not send the parent email','alert');}
-          });
-        }
-      }));
-      root.querySelector('#pAdd').addEventListener('click',()=>UI.modal({
-        title:'Add Parent',
-        body:`<div class="field"><label>Full name</label><input type="text" data-f="name" placeholder="Full name"></div>
-          <div class="form-row">
-            <div class="field"><label>Email</label><input type="email" data-f="email" placeholder="name@email.com"></div>
-            <div class="field"><label>Phone</label><input type="text" data-f="phone" placeholder="0xx xxx xxxx"></div>
-          </div>
-          <div class="field"><label>Campus</label><select data-f="branchId">${DB.liveBranches().map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('')}</select></div>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Add & Send App Invite</button>`,
-        mount(r,close){
-          r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',async()=>{
-            const v=UI.formVals(r);
-            if(!v.name||!v.email||!v.phone||!v.branchId){UI.toast('Complete all parent details','alert');return;}
-            const button=r.querySelector('[data-s]');button.disabled=true;
-            try{
-              await window.MobsieApi.mutate('/api/parents',{method:'POST',body:JSON.stringify({name:v.name,email:v.email,phone:v.phone,branchId:v.branchId})});
-              close();await window.MobsieApi.load();UI.toast('Parent added to Neon — Mobsie app invite sent');App.refresh();
-            }catch(error){button.disabled=false;UI.toast(error.message||'Could not add parent','alert');}
           });
         }
       }));

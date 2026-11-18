@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import { apiHandler, pageLimit } from "@/server/api";
+import { apiHandler, one, pageLimit } from "@/server/api";
 import { query } from "@/server/db";
+import { AppError } from "@/server/errors";
 import { createAndSendNotification } from "@/server/expoPush";
 import { publishRealtime } from "@/server/realtime";
 import { requireDashboardPermission } from "@/server/auth";
@@ -10,8 +11,12 @@ import { requireTeacherScope } from "@/server/teacherScope";
 const replySchema = z.object({
   parentAccountId: z.string().uuid(),
   body: z.string().trim().min(1).max(4000),
+  branchId: z.string().uuid().nullable().optional(),
 });
-const readSchema = z.object({ parentAccountId: z.string().uuid() });
+const readSchema = z.object({
+  parentAccountId: z.string().uuid(),
+  branchId: z.string().uuid().nullable().optional(),
+});
 
 type MessageRow = {
   id: string;
@@ -30,6 +35,36 @@ type ParentRow = {
   name: string;
 };
 
+async function resolveMessageScope(
+  user: NonNullable<Parameters<typeof requireTeacherScope>[0]>,
+  requestedBranchId: string | null,
+  teacherScope: Awaited<ReturnType<typeof requireTeacherScope>>,
+) {
+  const assignedBranchId = teacherScope?.branchId ?? user.branchId ?? null;
+
+  if (assignedBranchId && requestedBranchId && assignedBranchId !== requestedBranchId) {
+    throw new AppError(403, "FORBIDDEN", "You cannot view messages from another campus.");
+  }
+
+  const branchId = assignedBranchId ?? requestedBranchId;
+  if (branchId) {
+    const branch = await query<{ id: string }>(
+      `SELECT id FROM branches
+       WHERE id=$1 AND tenant_id=$2 AND status <> 'INACTIVE'
+       LIMIT 1`,
+      [branchId, user.tenantId],
+    );
+    if (!branch.rows[0]) {
+      throw new AppError(422, "INVALID_BRANCH", "Select an active campus.");
+    }
+  }
+
+  return {
+    branchId,
+    className: teacherScope?.className ?? null,
+  };
+}
+
 export default apiHandler<MessageRow[]>(
   {
     methods: ["GET", "POST", "PATCH"],
@@ -41,15 +76,34 @@ export default apiHandler<MessageRow[]>(
     const teacherScope = await requireTeacherScope(user!);
     if (req.method === "PATCH") {
       const input = readSchema.parse(req.body);
+      const scope = await resolveMessageScope(user!, input.branchId ?? null, teacherScope);
       await query(
         `UPDATE parent_messages SET read_at=COALESCE(read_at,now())
          WHERE tenant_id=$1 AND parent_account_id=$2 AND sender_type='PARENT'
-           AND ($3::text='PRINCIPAL' OR EXISTS (
-             SELECT 1 FROM parent_accounts p WHERE p.id=parent_messages.parent_account_id
-               AND EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$4::uuid
-                 AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')
-                   OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))))`,
-        [user!.tenantId,input.parentAccountId,user!.role,teacherScope?.branchId??user!.branchId,teacherScope?.className??null],
+           AND EXISTS (
+             SELECT 1 FROM parent_accounts p
+             WHERE p.id=parent_messages.parent_account_id
+               AND p.tenant_id=parent_messages.tenant_id
+               AND (
+                 $3::uuid IS NULL
+                 OR ($4::text IS NULL AND (
+                   p.preferred_branch_id=$3
+                   OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3)
+                   OR EXISTS (
+                     SELECT 1 FROM applications a
+                     JOIN application_preferences ap ON ap.application_id=a.id
+                     WHERE a.parent_account_id=p.id AND a.tenant_id=p.tenant_id AND ap.branch_id=$3
+                   )
+                 ))
+                 OR ($4::text IS NOT NULL AND EXISTS (
+                   SELECT 1 FROM students s
+                   WHERE s.parent_account_id=p.id AND s.branch_id=$3
+                     AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g')
+                       OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g'))
+                 ))
+               )
+           )`,
+        [user!.tenantId, input.parentAccountId, scope.branchId, scope.className],
       );
       res.status(200).json({ok:true,data:[]});return;
     }
@@ -61,6 +115,7 @@ export default apiHandler<MessageRow[]>(
      */
     if (req.method === "POST") {
       const input = replySchema.parse(req.body);
+      const scope = await resolveMessageScope(user!, input.branchId ?? null, teacherScope);
 
       /**
        * Make sure the parent:
@@ -76,14 +131,26 @@ export default apiHandler<MessageRow[]>(
             AND tenant_id = $2
             AND is_active = true
             AND (
-              $3::uuid IS NULL OR $4::text = 'PRINCIPAL'
-              OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=parent_accounts.id AND s.branch_id=$3
-                AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')
-                  OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))
+              $3::uuid IS NULL
+              OR ($4::text IS NULL AND (
+                preferred_branch_id=$3
+                OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=parent_accounts.id AND s.branch_id=$3)
+                OR EXISTS (
+                  SELECT 1 FROM applications a
+                  JOIN application_preferences ap ON ap.application_id=a.id
+                  WHERE a.parent_account_id=parent_accounts.id AND a.tenant_id=parent_accounts.tenant_id AND ap.branch_id=$3
+                )
+              ))
+              OR ($4::text IS NOT NULL AND EXISTS (
+                SELECT 1 FROM students s
+                WHERE s.parent_account_id=parent_accounts.id AND s.branch_id=$3
+                  AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g')
+                    OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g'))
+              ))
             )
           LIMIT 1
         `,
-        [input.parentAccountId, user!.tenantId, teacherScope?.branchId??user!.branchId, user!.role, teacherScope?.className??null],
+        [input.parentAccountId, user!.tenantId, scope.branchId, scope.className],
       );
 
       if (!parent.rows[0]) {
@@ -175,6 +242,11 @@ export default apiHandler<MessageRow[]>(
      */
 
     const limit = pageLimit(req.query.limit, 500);
+    const requestedBranchId = one(req.query.branchId) || null;
+    if (requestedBranchId && !z.string().uuid().safeParse(requestedBranchId).success) {
+      throw new AppError(422, "INVALID_BRANCH", "Select a valid campus.");
+    }
+    const scope = await resolveMessageScope(user!, requestedBranchId, teacherScope);
 
     const result = await query<MessageRow>(
       `
@@ -205,10 +277,22 @@ export default apiHandler<MessageRow[]>(
 
         WHERE m.tenant_id = $1
           AND (
-            $3::uuid IS NULL OR $4::text = 'PRINCIPAL'
-            OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3
-              AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')
-                OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($5)),'[_ -]+','','g')))
+            $3::uuid IS NULL
+            OR ($4::text IS NULL AND (
+              p.preferred_branch_id=$3
+              OR EXISTS (SELECT 1 FROM students s WHERE s.parent_account_id=p.id AND s.branch_id=$3)
+              OR EXISTS (
+                SELECT 1 FROM applications a
+                JOIN application_preferences ap ON ap.application_id=a.id
+                WHERE a.parent_account_id=p.id AND a.tenant_id=p.tenant_id AND ap.branch_id=$3
+              )
+            ))
+            OR ($4::text IS NOT NULL AND EXISTS (
+              SELECT 1 FROM students s
+              WHERE s.parent_account_id=p.id AND s.branch_id=$3
+                AND (regexp_replace(lower(trim(s.grade)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g')
+                  OR regexp_replace(lower(trim(s.class_name)),'[_ -]+','','g')=regexp_replace(lower(trim($4)),'[_ -]+','','g'))
+            ))
           )
 
         ORDER BY
@@ -217,7 +301,7 @@ export default apiHandler<MessageRow[]>(
 
         LIMIT $2
       `,
-      [user!.tenantId, limit, teacherScope?.branchId??user!.branchId, user!.role, teacherScope?.className??null],
+      [user!.tenantId, limit, scope.branchId, scope.className],
     );
 
     res.status(200).json({
