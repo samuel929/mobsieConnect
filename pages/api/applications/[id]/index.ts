@@ -1,5 +1,5 @@
 import { apiHandler, one } from "@/server/api";
-import { getRequestUser, requireRole } from "@/server/auth";
+import { getRequestUser, requireDashboardPermission, requireRole } from "@/server/auth";
 import { requireApplicationAccess } from "@/server/applicationAccess";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -94,7 +94,7 @@ type ConsentFormCompletion = {
 
 export default apiHandler<Record<string, unknown>>(
   {
-    methods: ["GET", "PUT"],
+    methods: ["GET", "PUT", "DELETE"],
     auth: false,
   },
 
@@ -157,14 +157,53 @@ export default apiHandler<Record<string, unknown>>(
      * ACCESS
      * ------------------------------------------
      */
+    let dashboardUser: Awaited<ReturnType<typeof getRequestUser>> | null = null;
+
     if (req.method === "GET" && req.headers["x-application-token"]) {
       await requireApplicationAccess(req, applicationId);
     } else if (req.method === "PUT") {
       await requireApplicationAccess(req, applicationId);
     } else {
-      const user = await getRequestUser(req);
+      dashboardUser = await getRequestUser(req);
 
-      requireRole(user, ["PRINCIPAL"]);
+      requireRole(dashboardUser, ["PRINCIPAL"]);
+      await requireDashboardPermission(dashboardUser, "Admissions");
+    }
+
+    /**
+     * Delete the application and its application-owned onboarding records.
+     * The students.application_id foreign key is ON DELETE SET NULL, so an
+     * already-enrolled learner is deliberately retained instead of being
+     * silently removed with their historical application.
+     */
+    if (req.method === "DELETE") {
+      const deleted = await query<{ id: string; reference: string }>(
+        `DELETE FROM applications a
+         WHERE a.id = $1
+           AND a.tenant_id = $2
+           AND (
+             $3::uuid IS NULL
+             OR EXISTS (
+               SELECT 1
+               FROM application_preferences p
+               WHERE p.application_id = a.id
+                 AND p.branch_id = $3::uuid
+             )
+           )
+         RETURNING a.id, a.reference`,
+        [applicationId, dashboardUser!.tenantId, dashboardUser!.branchId],
+      );
+
+      if (!deleted.rows[0]) {
+        throw new AppError(
+          404,
+          "APPLICATION_NOT_FOUND",
+          "Application not found for your assigned campus.",
+        );
+      }
+
+      res.status(200).json({ ok: true, data: deleted.rows[0] });
+      return;
     }
 
     /**

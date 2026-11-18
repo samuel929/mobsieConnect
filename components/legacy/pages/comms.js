@@ -1486,7 +1486,7 @@ Pages.messages = {
       };
       const delivered=DB.pushLog.reduce((sum,n)=>sum+Number(n.delivered||0),0);
       const opened=DB.pushLog.reduce((sum,n)=>sum+Number(n.opened||0),0);
-      const deliveredRows=DB.pushLog.filter(n=>String(n.status).toLowerCase()==='delivered');
+      const deliveredRows=DB.pushLog.filter(n=>Number(n.delivered||0)>0);
       const tbl=UI.table({
         pageSize:8, rows:DB.pushLog,
         onRow:n=>UI.drawer({
@@ -1520,11 +1520,7 @@ Pages.messages = {
         const result=await MobsieApi.mutate('/api/mobile-admin/push',{
           method:'POST',body:JSON.stringify({title:v.subject,body:v.body||v.subject,audience:v.aud,scheduledAt:v.scheduledAt?new Date(v.scheduledAt).toISOString():null})
         });
-        const delivery=result.data?.sent??0;
-        const n=audSize(v.aud);
-        DB.pushLog.unshift({title:v.subject,body:v.body||v.subject,message:v.body||v.subject,audience:v.aud,time:v.scheduledAt?new Date(v.scheduledAt).toLocaleString():'Just now',
-          delivered:delivery,opened:0,status:v.scheduledAt?'Scheduled':'Delivered'});
-        DB.save();
+        await MobsieApi.load();
       }));
     }
   };

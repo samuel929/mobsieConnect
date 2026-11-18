@@ -62,6 +62,6 @@ export async function createAndSendNotification(input:{tenantId:string;branchId?
   if(row.rows[0].status==="SENT") return {id:row.rows[0].id,sent:0,failed:0,scheduled:false,duplicate:true};
   if(scheduled) return {id:row.rows[0].id,sent:0,failed:0,scheduled:true};
   const delivery=await sendExpoPush(input);
-  await query("UPDATE mobile_notifications SET status=$2,sent_at=now() WHERE id=$1",[row.rows[0].id,delivery.failed>0&&delivery.sent===0?"FAILED":"SENT"]);
+  await query("UPDATE mobile_notifications SET status=$2,sent_at=now(),sent_count=$3,failed_count=$4 WHERE id=$1",[row.rows[0].id,delivery.failed>0&&delivery.sent===0?"FAILED":"SENT",delivery.sent,delivery.failed]);
   return {id:row.rows[0].id,...delivery,scheduled:false};
 }

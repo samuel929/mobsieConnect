@@ -4,6 +4,13 @@ window.Pages=window.Pages||{};
   const esc=UI.esc, F=DB.fmtN;
 
   /* ---------- Attendance ---------- */
+  const attendanceClassCode=(value)=>{
+    const label=String(value||'').trim().toUpperCase();
+    const stage=label.match(/STAGE[\s_-]*(\d+)/);
+    if(stage)return `STAGE_${stage[1]}`;
+    if(/GRADE[\s_-]*R\b/.test(label))return 'GRADE_R';
+    return label.split('—')[0].trim().replace(/[\s-]+/g,'_');
+  };
   Pages.attendance={
     render(){
       const stats=DB.attendanceStats||{overall:{entries:0,present:0,percentage:0},grades:[],dates:[],heatmap:[],branches:[]};
@@ -56,7 +63,7 @@ window.Pages=window.Pages||{};
             <div class="attendance-capture-form__section-title">Register details</div>
             <div class="form-row">
             <div class="field"><label>Campus</label><select data-f="branch">${DB.liveBranches().map(b=>`<option>${esc(b.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>Class</label><select data-f="grade">${DB.GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+            <div class="field"><label>Class</label><select data-f="grade">${DB.GRADES.map(g=>`<option value="${esc(attendanceClassCode(g))}">${esc(g)}</option>`).join('')}</select></div>
             </div>
             <div class="field attendance-capture-form__date"><label>Attendance date</label><input type="date" data-f="date" value="${new Date().toISOString().slice(0,10)}"></div>
           </section>
@@ -79,8 +86,10 @@ window.Pages=window.Pages||{};
           const register=r.querySelector('[data-register]');
           const renderKids=()=>{
             const branch=branchSelect.value,grade=gradeSelect.value;
-            let kids=DB.learners.filter(kid=>kid.branch===branch&&kid.grade===grade);
-            if(!kids.length) kids=DB.learners.filter(kid=>kid.branch===branch);
+            const kids=DB.learners.filter(kid=>
+              kid.branch===branch&&
+              attendanceClassCode(kid.grade)===grade
+            );
             const learnerClass=(kid)=>{
               const values=[kid.grade,kid.cls].filter(Boolean).map(value=>String(value).trim());
               return [...new Set(values)].join(' · ')||'Class not assigned';

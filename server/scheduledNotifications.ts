@@ -36,12 +36,12 @@ export async function processDueScheduledNotifications(tenantId?: string) {
       sent += result.sent;
       failed += result.failed;
       await query(
-        "UPDATE mobile_notifications SET status=$2,sent_at=now() WHERE id=$1",
-        [item.id, result.failed > 0 && result.sent === 0 ? "FAILED" : "SENT"],
+        "UPDATE mobile_notifications SET status=$2,sent_at=now(),sent_count=$3,failed_count=$4 WHERE id=$1",
+        [item.id, result.failed > 0 && result.sent === 0 ? "FAILED" : "SENT", result.sent, result.failed],
       );
     } catch {
       failed += 1;
-      await query("UPDATE mobile_notifications SET status='FAILED' WHERE id=$1", [item.id]);
+      await query("UPDATE mobile_notifications SET status='FAILED',failed_count=failed_count+1 WHERE id=$1", [item.id]);
     }
   }
   return { processed: due.rows.length, sent, failed };

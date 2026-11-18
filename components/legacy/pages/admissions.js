@@ -104,6 +104,7 @@ window.Pages=window.Pages||{};
    * The real database UUID must be available.
    */
   const applicationIdentifier =
+    a.dbId ||
     a.databaseId ||
     a.applicationId ||
     a.id;
@@ -791,6 +792,10 @@ window.Pages=window.Pages||{};
         ${MCIcon("download")}
         Download PDF
       </a>
+      <button class="btn btn-danger" id="apDelete">
+        ${MCIcon("x")}
+        Delete application
+      </button>
       ${['APPROVED','ENROLLED'].includes(String(detail?.status||a.status||'').toUpperCase().replaceAll(' ','_')) ? `
       <button class="btn btn-danger" id="apDeregister">
         ${MCIcon("x")}
@@ -814,6 +819,32 @@ window.Pages=window.Pages||{};
     `,
 
     mount(root, close) {
+      root.querySelector('#apDelete')?.addEventListener('click',()=>UI.modal({
+        title:'Delete application',
+        body:`<p>This permanently deletes application <b>${esc(detail?.reference||a.id||'')}</b> and its onboarding documents, payment attempts and form data.</p>
+          <p class="small muted">Any learner already created from an approved application will be kept. This action cannot be undone.</p>`,
+        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" data-s>Delete permanently</button>`,
+        mount(modal,closeModal){
+          modal.querySelector('[data-x]').addEventListener('click',closeModal);
+          modal.querySelector('[data-s]').addEventListener('click',async event=>{
+            const button=event.currentTarget;
+            button.disabled=true;
+            button.textContent='Deleting…';
+            try{
+              await MobsieApi.mutate('/api/applications/'+encodeURIComponent(applicationIdentifier),{method:'DELETE'});
+              closeModal();
+              close();
+              await MobsieApi.load();
+              UI.toast('Application deleted');
+              App.refresh();
+            }catch(error){
+              button.disabled=false;
+              button.textContent='Delete permanently';
+              UI.toast((error.message||'Could not delete the application')+(error.requestId?` · Reference ${error.requestId}`:''),'alert');
+            }
+          });
+        }
+      }));
       root.querySelector('#apDeregister')?.addEventListener('click',()=>UI.modal({
         title:'Deregister '+(detail?.childName||a.child),
         body:`<div class="field"><label>Last day of attendance</label><input type="date" data-f="lastDayOfAttendance" required></div>
@@ -1149,6 +1180,56 @@ function formatDocumentSize(bytes) {
         mount(r,close){
           const dateInput=r.querySelector('[data-f="childDateOfBirth"]');
           const field=name=>r.querySelector(`[data-f="${name}"]`);
+          const clearApplicationErrors=()=>{
+            r.querySelectorAll('.application-field-error').forEach(item=>item.remove());
+            r.querySelectorAll('.application-invalid').forEach(item=>{
+              item.classList.remove('application-invalid');
+              item.removeAttribute('aria-invalid');
+            });
+          };
+          const fieldLabel=element=>element?.closest('.field')?.querySelector('label')?.textContent?.trim()
+            || element?.closest('.application-document-upload')?.querySelector('strong')?.textContent?.trim()
+            || element?.closest('.application-consent')?.textContent?.trim()
+            || 'Required field';
+          const markApplicationError=(element,message)=>{
+            if(!element)return;
+            element.classList.add('application-invalid');
+            element.setAttribute('aria-invalid','true');
+            const container=element.closest('.field,.application-document-upload,.application-consent')||element.parentElement;
+            if(!container.querySelector(':scope > .application-field-error')){
+              const note=document.createElement('small');
+              note.className='application-field-error';
+              note.textContent=message||`${fieldLabel(element)} is required.`;
+              container.appendChild(note);
+            }
+          };
+          const revealApplicationErrors=(errors,summary)=>{
+            clearApplicationErrors();
+            const invalid=[];
+            Object.entries(errors||{}).forEach(([name,messages])=>{
+              const element=field(name)||r.querySelector(`[data-consent="${name}"]`)||r.querySelector(`[data-application-document="${name}"]`);
+              if(!element)return;
+              markApplicationError(element,Array.isArray(messages)?messages[0]:messages);
+              invalid.push(element);
+            });
+            const first=invalid[0];
+            if(first){
+              first.closest('.field,.application-document-upload,.application-consent')?.scrollIntoView({behavior:'smooth',block:'center'});
+              setTimeout(()=>first.focus({preventScroll:true}),250);
+            }
+            const names=[...new Set(invalid.map(fieldLabel))];
+            UI.toast(names.length?`${summary}: ${names.slice(0,4).join(', ')}${names.length>4?` and ${names.length-4} more`:''}`:summary,'alert');
+            return invalid.length>0;
+          };
+          const clearChangedError=event=>{
+            const element=event.target;
+            if(!element.matches('[data-f],[data-consent],[data-application-document]'))return;
+            element.classList.remove('application-invalid');
+            element.removeAttribute('aria-invalid');
+            element.closest('.field,.application-document-upload,.application-consent')?.querySelector(':scope > .application-field-error')?.remove();
+          };
+          r.addEventListener('input',clearChangedError);
+          r.addEventListener('change',clearChangedError);
           const updateConditionalFields=()=>{
             r.querySelector('[data-additional-guardian-fields]').hidden=!r.querySelector('[data-additional-guardian]').checked;
             r.querySelector('[data-aftercare-fields]').hidden=field('aftercareRequested').value!=='true';
@@ -1183,6 +1264,7 @@ function formatDocumentSize(bytes) {
           r.querySelectorAll('[data-application-document]').forEach(input=>input.addEventListener('change',()=>input.closest('label').classList.toggle('has-file',Boolean(input.files[0]))));
           r.querySelector('[data-x]').addEventListener('click',close);
           r.querySelector('[data-s]').addEventListener('click',async(event)=>{
+            clearApplicationErrors();
             const v=UI.formVals(r);
             const required=['parentName','parentEmail','parentPhone','childName','childIdNumber','childDateOfBirth','currentGrade','branchId','reason','schoolType','schoolStage','preferredStartDate','referralSource','emergencyContactName','emergencyContactPhone','feePayerFirstName','feePayerLastName'];
             if(v.attendedPreschool==='true')required.push('previousSchool','previousSchoolPhone');
@@ -1191,16 +1273,24 @@ function formatDocumentSize(bytes) {
             if(v.transportRequested==='true'&&normalizedBranch(branch?.name).includes('soshanguve'))required.push('transportRoute');
             const additionalGuardianEnabled=r.querySelector('[data-additional-guardian]').checked;
             if(additionalGuardianEnabled)required.push('additionalGuardianName','additionalGuardianRelationship','additionalGuardianEmail','additionalGuardianPhone');
-            if(required.some(key=>!v[key])){UI.toast('Complete every required onboarding field','alert');return;}
+            const missing=required.filter(key=>!String(v[key]??'').trim());
+            if(missing.length){revealApplicationErrors(Object.fromEntries(missing.map(key=>[key,[`${fieldLabel(field(key))} is required.`]])),'Complete the required fields');return;}
+            const formatErrors={};
+            ['parentEmail',...(additionalGuardianEnabled?['additionalGuardianEmail']:[])].forEach(key=>{if(!field(key).checkValidity())formatErrors[key]=['Enter a valid email address.'];});
+            if(!/^\d{13}$/.test(String(v.childIdNumber||'').trim()))formatErrors.childIdNumber=['Enter a 13-digit South African ID number.'];
+            if(Object.keys(formatErrors).length){revealApplicationErrors(formatErrors,'Correct the highlighted fields');return;}
             const emergency=comparablePhone(v.emergencyContactPhone),parentPhones=[v.parentPhone,additionalGuardianEnabled?v.additionalGuardianPhone:''].filter(Boolean).map(comparablePhone);
-            if(parentPhones.includes(emergency)){UI.toast('Emergency contact must be someone other than an enrolling parent','alert');return;}
+            if(parentPhones.includes(emergency)){revealApplicationErrors({emergencyContactPhone:['Use the number of an alternative emergency contact, not an enrolling parent.']},'Emergency contact needs attention');return;}
             const consentKeys=['feePayerTermsAccepted','informationAccurate','privacyAccepted','termsAccepted','enrolmentTermsAccepted'];
             const consents=Object.fromEntries(consentKeys.map(key=>[key,Boolean(r.querySelector(`[data-consent="${key}"]`)?.checked)]));
-            if(consentKeys.some(key=>!consents[key])){UI.toast('Accept all fee-payer and application consent statements','alert');return;}
+            const missingConsents=consentKeys.filter(key=>!consents[key]);
+            if(missingConsents.length){revealApplicationErrors(Object.fromEntries(missingConsents.map(key=>[key,['This consent is required.']])),'Accept the required consent statements');return;}
             const documentInputs=[...r.querySelectorAll('[data-application-document]')];
-            if(documentInputs.some(input=>input.required&&!input.files[0])){UI.toast('Upload every required application document','alert');return;}
-            if(documentInputs.some(input=>input.files[0]?.size>8*1024*1024)){UI.toast('Each document must be smaller than 8 MB','alert');return;}
-            if(!branch){UI.toast('Select a valid preferred branch','alert');return;}
+            const missingDocuments=documentInputs.filter(input=>input.required&&!input.files[0]);
+            if(missingDocuments.length){revealApplicationErrors(Object.fromEntries(missingDocuments.map(input=>[input.dataset.applicationDocument,['Upload this required document.']])),'Upload the required documents');return;}
+            const largeDocuments=documentInputs.filter(input=>input.files[0]?.size>8*1024*1024);
+            if(largeDocuments.length){revealApplicationErrors(Object.fromEntries(largeDocuments.map(input=>[input.dataset.applicationDocument,['This file must be smaller than 8 MB.']])),'Choose smaller documents');return;}
+            if(!branch){revealApplicationErrors({branchId:['Select a valid preferred branch.']},'Select a valid campus');return;}
             const s=DB.schools[0];
             const button=event.currentTarget;button.disabled=true;button.textContent='Creating…';
             try{
@@ -1234,7 +1324,12 @@ function formatDocumentSize(bytes) {
                   feePayerLastName:v.feePayerLastName,feePayerTermsAccepted:true}});
               DB.appCounts[0]++;DB.counters.pendingReview++;aState.tab='All';DB.log('Captured application',v.childName+' — '+branch.name,'ok');
               close();UI.toast('Complete application and documents saved to Neon');App.refresh();
-            }catch(error){button.disabled=false;button.textContent='Create Application';UI.toast(error.message,'alert');}
+            }catch(error){
+              button.disabled=false;button.textContent='Create Application';
+              if(!error.fieldErrors||!revealApplicationErrors(error.fieldErrors,error.message||'Please correct the highlighted fields.')){
+                UI.toast(error.message||'Could not create the application','alert');
+              }
+            }
           });
         }
       }));

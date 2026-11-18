@@ -13,7 +13,13 @@
       },
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.ok) throw new Error(body.error?.message || `Request failed (${response.status})`);
+    if (!response.ok || !body.ok) {
+      const error = new Error(body.error?.message || `Request failed (${response.status})`);
+      error.code = body.error?.code || '';
+      error.fieldErrors = body.error?.fieldErrors || null;
+      error.requestId = body.error?.requestId || response.headers.get('X-Request-Id') || '';
+      throw error;
+    }
     return body;
   }
 
@@ -99,6 +105,7 @@
         request(`/api/statements?period=${new Date().toISOString().slice(0,7)}`),
         request(`/api/applications/stats?period=${new Date().toISOString().slice(0,7)}`),
         request(`/api/shop/stats?period=${new Date().toISOString().slice(0,7)}`),
+        request('/api/mobile-admin/push'),
       );
     }
     const results = await Promise.allSettled(calls);
@@ -112,7 +119,7 @@
       events:results[3]?.status==='fulfilled',
     };
     const successful = results.map((result) => (result.status === 'fulfilled' ? result.value.data : null));
-    let [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages,statements,applicationStats,shopStats] = successful;
+    let [branches, students, academics, events, dailyActivities, roleData, parents, team, applications, deregistrations, products, orders, feedback, parentStats, teamStats, learnerStats, attendanceStats, reportStats, users, documents, newsletters, payments, invoices, dashboardNotifications, dashboardMessages,statements,applicationStats,shopStats,pushHistory] = successful;
     if (!principal) {
       const scopedResults=await Promise.allSettled([
         request('/api/parents?limit=500'),
@@ -317,6 +324,16 @@
       window.DB.currentRole=roleData.currentRole;
       window.DB.currentPermissions=roleData.currentRole?.permissions||[];
     }
+    if(principal){
+      window.DB.pushLog=(pushHistory&&Array.isArray(pushHistory.rows)?pushHistory.rows:[]).map(notification=>({
+        id:notification.id,title:notification.title,body:notification.body,message:notification.body,
+        audience:notification.audience||'All campuses',
+        time:new Date(notification.scheduledAt||notification.sentAt||notification.createdAt).toLocaleString('en-ZA'),
+        delivered:Number(notification.delivered||0),opened:Number(notification.opened||0),failed:Number(notification.failed||0),
+        status:statusLabel(notification.status),
+      }));
+      window.DB.pushStats=pushHistory.stats||{notifications:0,delivered:0,opened:0,scheduled:0};
+    }
     if (applications) {
       window.DB.applications = applications.map((application) => ({
         // Keep the UUID for API mutations; the reference remains the display id.
@@ -461,7 +478,7 @@
     // modal edits are authoritative so a reload cannot undo a saved action.
     if (stored?.data?.state) {
       Object.entries(stored.data.state).forEach(([key, value]) => {
-        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','waitingList','payments','invoices','products','ordersList','feedback','documentsList','newsletters','rolePerms'].includes(key)) window.DB[key] = value;
+        if (PERSISTED_MODELS.includes(key) && !['branches','teachers','parents','learners','applications','waitingList','payments','invoices','products','ordersList','feedback','documentsList','newsletters','pushLog','rolePerms'].includes(key)) window.DB[key] = value;
       });
     }
     // Saved control-centre state may predate the Mobsie Connect rename.

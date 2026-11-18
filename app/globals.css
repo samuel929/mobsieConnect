@@ -659,6 +659,11 @@ table.mc thead th.num{text-align:right}
 .dashboard-application-form input::placeholder,.dashboard-application-form textarea::placeholder{text-align:left}
 .dashboard-application-form .application-consent{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px;width:100%;text-align:left;cursor:pointer}
 .dashboard-application-form .application-consent input[type=checkbox]{width:18px!important;height:18px!important;min-width:18px;flex:0 0 18px;margin:1px 0 0;padding:0;box-shadow:none}
+.dashboard-application-form .application-invalid:not([type=checkbox]){border-color:#dc2626!important;background-color:#fff7f7!important;box-shadow:0 0 0 4px rgba(220,38,38,.1)!important}
+.dashboard-application-form .application-consent:has(.application-invalid),.dashboard-application-form .application-document-upload:has(.application-invalid){border-color:#dc2626!important;background:#fff7f7!important;box-shadow:0 0 0 3px rgba(220,38,38,.08)}
+.dashboard-application-form .application-consent:has(.application-invalid){padding:10px;border:1px solid #dc2626;border-radius:10px}
+.dashboard-application-form .application-invalid[type=checkbox]{outline:2px solid #dc2626;outline-offset:2px}
+.dashboard-application-form .application-field-error{display:block;margin-top:6px;color:#b91c1c;font-size:11.5px;font-weight:700;line-height:1.35;text-align:left}
 .learner-profile{display:grid;gap:18px}.learner-profile__hero{display:flex;align-items:center;gap:14px;padding:17px;border:1px solid #e5ebf3;border-radius:18px;background:linear-gradient(135deg,#fff 0%,#f7f9fc 100%)}.learner-profile__identity{min-width:0}.learner-profile__identity h3{margin:0;color:var(--ink-900);font-size:18px;letter-spacing:-.02em}.learner-profile__identity p{margin:4px 0 0;color:var(--ink-500);font-size:12px}.learner-profile__status{margin-left:auto}.learner-profile__stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.learner-profile__stats .mini-stat{min-width:0;border:1px solid #e7edf5;box-shadow:none}.learner-profile__stats .ms-val{font-size:17px;overflow:hidden;text-overflow:ellipsis}.learner-profile__section{padding:18px;border:1px solid #e7edf5;border-radius:16px;background:#fff}.learner-profile__section h4{margin:0 0 12px;color:var(--ink-900);font-size:14px}
 
 /* Daily activity editor: matches the dashboard's modern filter cards instead
