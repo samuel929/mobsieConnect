@@ -38,6 +38,7 @@ export default apiHandler<{ reference: string; status: string }>(
       feePayerReady: boolean;
       paymentComplete: boolean;
       missingDocuments: string[];
+      rejectedDocuments: string[];
     }>(
       `SELECT
          EXISTS(SELECT 1 FROM application_preferences WHERE application_id = $1) AS "hasPreferences",
@@ -67,7 +68,12 @@ export default apiHandler<{ reference: string; status: string }>(
              SELECT 1 FROM application_documents d
              WHERE d.application_id = $1 AND d.kind = required.kind
            )
-         ) AS "missingDocuments"`,
+         ) AS "missingDocuments",
+         ARRAY(
+           SELECT d.kind::text
+           FROM application_documents d
+           WHERE d.application_id=$1 AND d.review_status='REJECTED'
+         ) AS "rejectedDocuments"`,
       [applicationId],
     );
     const applicationReadiness = readiness.rows[0];
@@ -100,6 +106,14 @@ export default apiHandler<{ reference: string; status: string }>(
         422,
         "DOCUMENTS_REQUIRED",
         `Upload all required documents before submitting. Missing: ${missingDocuments.join(", ")}.`,
+      );
+    }
+    const rejectedDocuments = toStringArray(applicationReadiness.rejectedDocuments);
+    if (rejectedDocuments.length) {
+      throw new AppError(
+        422,
+        "DOCUMENT_REUPLOAD_REQUIRED",
+        `Replace the rejected documents before submitting: ${rejectedDocuments.join(", ")}.`,
       );
     }
     const result = await withTransaction(async (client) => {

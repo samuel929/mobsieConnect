@@ -31,7 +31,8 @@ export default apiHandler<{ id: string; kind: string; fileUrl: string }>(
         file_url = EXCLUDED.file_url, public_id = EXCLUDED.public_id,
         original_name = EXCLUDED.original_name, mime_type = EXCLUDED.mime_type,
         bytes = EXCLUDED.bytes, uploaded_at = now(), review_status = 'PENDING',
-        reviewed_at = NULL, reviewed_by = NULL
+        reviewed_at = NULL, reviewed_by = NULL, rejection_reason = NULL,
+        reupload_requested_at = NULL
       RETURNING id, kind::text, file_url AS "fileUrl"`,
       [
         applicationId,

@@ -460,6 +460,11 @@ window.Pages=window.Pages||{};
                       reviewStatus === "APPROVED" ? "Approved" : reviewStatus === "REJECTED" ? "Rejected" : "Pending review",
                       reviewStatus === "APPROVED" ? "green" : reviewStatus === "REJECTED" ? "red" : "amber"
                     )}
+                    ${
+                      reviewStatus === "REJECTED" && document.rejectionReason
+                        ? `<div class="small" style="color:var(--red-600,#dc2626);margin-top:8px;max-width:280px;line-height:1.4"><strong>Replacement requested:</strong> ${esc(document.rejectionReason)}</div>`
+                        : ""
+                    }
                   </div>
 
                   <div class="application-document-actions">
@@ -495,7 +500,7 @@ window.Pages=window.Pages||{};
                       `
                     }
                     <button class="btn btn-ghost btn-sm" data-doc-review="APPROVED" data-doc-id="${esc(document.id || "")}">${MCIcon("check")} Approve</button>
-                    <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject</button>
+                    <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject &amp; request replacement</button>
                   </div>
                 </div>
               `;
@@ -829,24 +834,49 @@ window.Pages=window.Pages||{};
           });
         }
       }));
-      root.querySelectorAll("[data-doc-review]").forEach((reviewButton) =>
-        reviewButton.addEventListener("click", async (event) => {
-          const button = event.currentTarget;
+      const reviewDocument = async (button, reason) => {
           const documentId = button.dataset.docId;
           if (!documentId) return;
           button.disabled = true;
           try {
             await MobsieApi.mutate(
               "/api/applications/" + encodeURIComponent(applicationIdentifier) + "/documents/" + encodeURIComponent(documentId),
-              { method: "PUT", body: JSON.stringify({ reviewStatus: button.dataset.docReview }) }
+              { method: "PUT", body: JSON.stringify({ reviewStatus: button.dataset.docReview, reason }) }
             );
-            UI.toast("Document marked " + String(button.dataset.docReview || "").toLowerCase());
+            UI.toast(button.dataset.docReview === "REJECTED" ? "Parent notified to upload the correct document" : "Document approved");
             close();
             await openApplication(a);
           } catch (error) {
             button.disabled = false;
             UI.toast(error.message || "Could not review the document", "alert");
           }
+      };
+      root.querySelectorAll("[data-doc-review]").forEach((reviewButton) =>
+        reviewButton.addEventListener("click", async (event) => {
+          const button = event.currentTarget;
+          if (button.dataset.docReview !== "REJECTED") {
+            await reviewDocument(button);
+            return;
+          }
+          UI.modal({
+            title: "Request a replacement document",
+            body: `<p class="muted">Tell the parent exactly what is wrong and what they need to upload.</p>
+              <label class="field"><span>Reason for rejection</span><textarea data-rejection-reason rows="4" maxlength="500" placeholder="For example: The ID copy is blurred. Please upload a clear, full-colour copy showing all four corners."></textarea></label>`,
+            foot: `<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" data-s>Reject &amp; notify parent</button>`,
+            mount(modal, closeModal) {
+              modal.querySelector("[data-x]").addEventListener("click", closeModal);
+              modal.querySelector("[data-s]").addEventListener("click", async (submitEvent) => {
+                const reason = modal.querySelector("[data-rejection-reason]").value.trim();
+                if (reason.length < 5) {
+                  UI.toast("Add a clear reason for the parent", "alert");
+                  return;
+                }
+                submitEvent.currentTarget.disabled = true;
+                closeModal();
+                await reviewDocument(button, reason);
+              });
+            },
+          });
         })
       );
       root

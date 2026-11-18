@@ -42,6 +42,8 @@ type ApplicationDocument = {
   mimeType: string;
   bytes: number;
   reviewStatus: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason: string | null;
+  reuploadRequestedAt: string | null;
   uploadedAt: string;
 };
 
@@ -406,6 +408,8 @@ export default apiHandler<Record<string, unknown>>(
             d.mime_type AS "mimeType",
             d.bytes,
             d.review_status AS "reviewStatus",
+            d.rejection_reason AS "rejectionReason",
+            d.reupload_requested_at::text AS "reuploadRequestedAt",
             d.uploaded_at::text AS "uploadedAt"
 
           FROM application_documents d

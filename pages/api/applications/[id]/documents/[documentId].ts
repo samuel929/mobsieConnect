@@ -4,8 +4,29 @@ import type { NextApiResponse } from "next";
 import { apiHandler, one } from "@/server/api";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { createAndSendNotification } from "@/server/expoPush";
 
-const reviewSchema = z.object({ reviewStatus: z.enum(["APPROVED", "REJECTED"]) });
+const reviewSchema = z
+  .object({
+    reviewStatus: z.enum(["APPROVED", "REJECTED"]),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.reviewStatus === "REJECTED" && (!value.reason || value.reason.length < 5)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "Explain what is wrong so the parent knows which document to upload.",
+      });
+    }
+  });
+
+type DocumentContext = {
+  id: string;
+  kind: string;
+  parentAccountId: string | null;
+  branchId: string | null;
+};
 
 type StoredDocument = {
   id: string;
@@ -27,7 +48,7 @@ function downloadName(originalName: string, mimeType: string) {
   return cleaned || "document";
 }
 
-export default apiHandler<{ id: string; reviewStatus: string }>(
+export default apiHandler<{ id: string; reviewStatus: string; rejectionReason?: string | null }>(
   { methods: ["GET", "PUT"], roles: ["PRINCIPAL"] },
   async (req, res, { user }) => {
     const applicationId = one(req.query.id);
@@ -63,18 +84,73 @@ export default apiHandler<{ id: string; reviewStatus: string }>(
       return;
     }
     const input = reviewSchema.parse(req.body);
+    const context = await query<DocumentContext>(
+      `SELECT d.id, d.kind::text AS kind,
+              a.parent_account_id AS "parentAccountId", p.branch_id AS "branchId"
+       FROM application_documents d
+       JOIN applications a ON a.id=d.application_id
+       LEFT JOIN application_preferences p ON p.application_id=a.id
+       WHERE d.id=$1 AND a.tenant_id=$2
+         AND (a.id::text=$3 OR a.reference=$3)
+       LIMIT 1`,
+      [documentId, user!.tenantId, applicationId],
+    );
+    const documentContext = context.rows[0];
+    if (!documentContext) throw new AppError(404, "DOCUMENT_NOT_FOUND", "Document not found.");
+
     const reviewed = await query<{ id: string; reviewStatus: string }>(
       `UPDATE application_documents d
-       SET review_status=$4, reviewed_at=now(), reviewed_by=$3
+       SET review_status=$4, reviewed_at=now(), reviewed_by=$3,
+           rejection_reason=CASE WHEN $4='REJECTED' THEN $6 ELSE NULL END,
+           reupload_requested_at=CASE WHEN $4='REJECTED' THEN now() ELSE NULL END
        FROM applications a
        WHERE d.id=$1
          AND a.id=d.application_id
          AND a.tenant_id=$5
          AND (a.id::text=$2 OR a.reference=$2)
        RETURNING d.id,d.review_status AS "reviewStatus"`,
-      [documentId, applicationId, user!.id, input.reviewStatus, user!.tenantId],
+      [documentId, applicationId, user!.id, input.reviewStatus, user!.tenantId, input.reason ?? null],
     );
     if (!reviewed.rows[0]) throw new AppError(404, "DOCUMENT_NOT_FOUND", "Document not found.");
-    res.status(200).json({ ok: true, data: reviewed.rows[0] });
+
+    if (input.reviewStatus === "REJECTED") {
+      await query(
+        `UPDATE applications
+         SET status='DOCUMENTS_REQUIRED', updated_at=now()
+         WHERE id=(SELECT application_id FROM application_documents WHERE id=$1)
+           AND status IN ('PENDING_REVIEW','DOCUMENTS_REQUIRED')`,
+        [documentId],
+      );
+
+      if (documentContext.parentAccountId) {
+        const documentName = documentContext.kind.toLowerCase().replace(/_/g, " ");
+        try {
+          await createAndSendNotification({
+            tenantId: user!.tenantId,
+            branchId: documentContext.branchId,
+            parentAccountId: documentContext.parentAccountId,
+            title: "Document needs to be replaced",
+            body: `Your ${documentName} was not accepted: ${input.reason}. Upload the correct document to continue.`,
+            audience: "Parent",
+            data: {
+              screen: "ApplicationReview",
+              applicationId,
+              documentId,
+              documentKind: documentContext.kind,
+              action: "REUPLOAD_DOCUMENT",
+            },
+            sourceType: "APPLICATION_DOCUMENT_REUPLOAD",
+            sourceId: `${documentId}:${Date.now()}`,
+          });
+        } catch (error) {
+          console.error("Could not send document re-upload notification", error);
+        }
+      }
+    }
+
+    res.status(200).json({
+      ok: true,
+      data: { ...reviewed.rows[0], rejectionReason: input.reviewStatus === "REJECTED" ? input.reason : null },
+    });
   },
 );
