@@ -34,7 +34,9 @@ export default apiHandler<ProcessResult>(
       for (const request of due.rows) {
         if (request.studentId) {
           await client.query(
-            'DELETE FROM students WHERE id = $1 AND tenant_id = $2',
+            `UPDATE students
+                SET enrollment_status = 'DEREGISTERED', updated_at = now()
+              WHERE id = $1 AND tenant_id = $2`,
             [request.studentId, request.tenantId],
           );
           if (request.branchId) {
@@ -47,44 +49,13 @@ export default apiHandler<ProcessResult>(
           }
         }
 
-        if (request.parentAccountId) {
-          const remaining = await client.query<{ count: string }>(
-            `SELECT count(*)::text AS count
-             FROM students s
-             LEFT JOIN applications a ON a.id = s.application_id
-             WHERE s.tenant_id = $1
-               AND (
-                 s.parent_account_id = $2 OR
-                 a.parent_account_id = $2 OR
-                 lower(a.parent_email::text) = lower($3)
-               )`,
-            [request.tenantId, request.parentAccountId, request.parentEmail],
-          );
-
-          if (Number(remaining.rows[0]?.count ?? 0) === 0) {
-            await client.query(
-              `DELETE FROM applications
-               WHERE tenant_id = $1
-                 AND (parent_account_id = $2 OR lower(parent_email::text) = lower($3))`,
-              [request.tenantId, request.parentAccountId, request.parentEmail],
-            );
-            await client.query(
-              'DELETE FROM parent_accounts WHERE id = $1 AND tenant_id = $2',
-              [request.parentAccountId, request.tenantId],
-            );
-          }
-        }
-
         await client.query(
           `UPDATE deregistration_requests
            SET status = 'COMPLETED',
-               parent_removed = NOT EXISTS (
-                 SELECT 1 FROM parent_accounts
-                 WHERE id = $1 AND tenant_id = $2
-               ),
+               parent_removed = false,
                completed_at = now()
-           WHERE id = $3`,
-          [request.parentAccountId, request.tenantId, request.id],
+           WHERE id = $1`,
+          [request.id],
         );
       }
 

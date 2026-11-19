@@ -172,6 +172,22 @@ export default apiHandler<Record<string, unknown>>(
       if (!application.branchId) {
         throw new AppError(422, "BRANCH_REQUIRED", "Choose a branch before approving this application.");
       }
+      let parentAccountId = application.parentAccountId;
+      if (!parentAccountId) {
+        const matchingParent = await query<{ id: string }>(
+          `SELECT id FROM parent_accounts
+            WHERE tenant_id=$1 AND lower(trim(email::text))=lower(trim($2::text))
+            LIMIT 1`,
+          [application.tenantId, application.parentEmail],
+        );
+        parentAccountId = matchingParent.rows[0]?.id ?? null;
+        if (parentAccountId) {
+          await query(
+            `UPDATE applications SET parent_account_id=$2,updated_at=now() WHERE id=$1`,
+            [application.id, parentAccountId],
+          );
+        }
+      }
       await query(
         `INSERT INTO students (
            tenant_id, branch_id, application_id, parent_account_id,
@@ -191,19 +207,19 @@ export default apiHandler<Record<string, unknown>>(
           application.tenantId,
           application.branchId,
           application.id,
-          application.parentAccountId,
+          parentAccountId,
           application.childName,
           application.childDateOfBirth,
           application.currentGrade,
           application.parentName,
         ],
       );
-      if (application.parentAccountId) {
+      if (parentAccountId) {
         await query(
           `UPDATE parent_accounts
               SET preferred_branch_id=$2,updated_at=now()
             WHERE id=$1 AND tenant_id=$3`,
-          [application.parentAccountId, application.branchId, application.tenantId],
+          [parentAccountId, application.branchId, application.tenantId],
         );
       }
     }

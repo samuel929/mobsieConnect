@@ -1,21 +1,10 @@
 import { apiHandler, one } from "@/server/api";
+import { applicationReference, nextAvailableReference } from "@/server/applicationReference";
 import { requireApplicationAccess } from "@/server/applicationAccess";
 import { query } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { schoolPrice } from "@/server/schoolPackages";
 import { preferencesSchema } from "@/server/validation";
-
-const branchReferencePrefix = (branchName: string) => {
-  const value = branchName.toLowerCase();
-  if (value.includes("soshanguve")) return "S1";
-  if (value.includes("mamelodi")) return "M1";
-  if (value.includes("thembisa") || value.includes("tembisa")) return "T1";
-  if (value.includes("sky")) return "SC1";
-  if (value.includes("hebron")) return "H1";
-  if (value.includes("soweto")) return "S2";
-  // New branches remain usable before a reference code is configured.
-  return branchName.replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "APP";
-};
 
 const comparablePhoneNumber = (value: string | null) => {
   const digits = (value ?? "").replace(/\D/g, "");
@@ -55,11 +44,15 @@ export default apiHandler<{ saved: true; reference: string }>(
         body.feePayerTermsAccepted ?? body.fee_payer_terms_accepted ?? false,
     });
     const applicationContacts = await query<{
+      tenantId: string;
       parentPhone: string;
       additionalGuardianPhone: string | null;
+      childName: string;
+      childDateOfBirth: string;
     }>(
-      `SELECT parent_phone AS "parentPhone",
-              additional_guardian_phone AS "additionalGuardianPhone"
+      `SELECT tenant_id AS "tenantId",parent_phone AS "parentPhone",
+              additional_guardian_phone AS "additionalGuardianPhone",
+              child_name AS "childName",child_date_of_birth::text AS "childDateOfBirth"
        FROM applications WHERE id=$1 LIMIT 1`,
       [applicationId],
     );
@@ -145,8 +138,15 @@ export default apiHandler<{ saved: true; reference: string }>(
         fees.monthlyFeeCents,
       ],
     );
-    const prefix = branchReferencePrefix(branch.rows[0].name);
-    const reference = `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const application = applicationContacts.rows[0];
+    if (!application) throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found.");
+    const baseReference = applicationReference(branch.rows[0].name, application.childName, application.childDateOfBirth);
+    const matchingReferences = await query<{ reference: string }>(
+      `SELECT reference FROM applications
+       WHERE tenant_id=$1 AND id<>$2 AND (reference=$3 OR reference LIKE $3||'-%')`,
+      [application.tenantId, applicationId, baseReference],
+    );
+    const reference = nextAvailableReference(baseReference, matchingReferences.rows.map((row) => row.reference));
     const updated = await query<{ reference: string }>(
       `UPDATE applications SET reference=$2, updated_at=now()
        WHERE id=$1 AND status='DRAFT' RETURNING reference`,

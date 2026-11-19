@@ -6,6 +6,8 @@ import { requireTeacherScope } from "@/server/teacherScope";
 
 type StudentRow = {
   id: string;
+  applicationId: string | null;
+  branchId: string;
   name: string;
   branchName: string;
   grade: string;
@@ -80,7 +82,7 @@ export default apiHandler<unknown>(
     const branchId = user.branchId ?? one(req.query.branchId);
     const cursor = one(req.query.cursor);
     const result = await query<StudentRow>(
-      `SELECT s.id, s.name, s.date_of_birth::text AS "dateOfBirth",b.name AS "branchName", s.grade,
+      `SELECT s.id, s.application_id AS "applicationId",s.branch_id AS "branchId", s.name, s.date_of_birth::text AS "dateOfBirth",b.name AS "branchName", s.grade,
         s.class_name AS "className", s.parent_name AS "parentName",
         s.attendance_rate::float AS "attendanceRate",
         s.enrollment_status AS "enrollmentStatus",s.onboarding_profile AS "onboardingProfile", count(*) OVER()::text AS "totalCount"

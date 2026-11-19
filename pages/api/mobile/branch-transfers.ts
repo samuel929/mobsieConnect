@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiHandler } from "@/server/api";
+import { applicationReference, nextAvailableReference } from "@/server/applicationReference";
 import { getParent } from "@/server/parentAuth";
 import { query, withTransaction } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -9,17 +10,6 @@ const schema = z.object({
   toBranchId: z.uuid(),
   reason: z.string().trim().max(1000).optional(),
 });
-
-function prefix(name: string) {
-  const value = name.toLowerCase();
-  if (value.includes("soshanguve")) return "S1";
-  if (value.includes("mamelodi")) return "M1";
-  if (value.includes("thembisa") || value.includes("tembisa")) return "T1";
-  if (value.includes("sky")) return "SC1";
-  if (value.includes("hebron")) return "H1";
-  if (value.includes("soweto")) return "S2";
-  return name.replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "APP";
-}
 
 export default apiHandler<unknown>({ methods: ["GET", "POST"], auth: false }, async (req, res) => {
   const parent = await getParent(req);
@@ -32,8 +22,9 @@ export default apiHandler<unknown>({ methods: ["GET", "POST"], auth: false }, as
   }
   const input = schema.parse(req.body);
   const result = await withTransaction(async (client) => {
-    const studentResult = await client.query<{ id:string; branchId:string; applicationId:string|null; reference:string|null }>(
-      `SELECT s.id,s.branch_id AS "branchId",s.application_id AS "applicationId",a.reference
+    const studentResult = await client.query<{ id:string; branchId:string; applicationId:string|null; reference:string|null; name:string; dateOfBirth:string }>(
+      `SELECT s.id,s.branch_id AS "branchId",s.application_id AS "applicationId",a.reference,
+              s.name,s.date_of_birth::text AS "dateOfBirth"
        FROM students s LEFT JOIN applications a ON a.id=s.application_id
        WHERE s.id=$1 AND s.tenant_id=$2 AND (s.parent_account_id=$3 OR a.parent_account_id=$3) LIMIT 1`,
       [input.studentId,parent.tenantId,parent.id],
@@ -43,7 +34,14 @@ export default apiHandler<unknown>({ methods: ["GET", "POST"], auth: false }, as
     if(student.branchId===input.toBranchId) throw new AppError(422,"SAME_BRANCH","Select a different branch.");
     const branch=await client.query<{name:string}>("SELECT name FROM branches WHERE id=$1 AND tenant_id=$2 AND status='ACTIVE'",[input.toBranchId,parent.tenantId]);
     if(!branch.rows[0]) throw new AppError(422,"BRANCH_NOT_FOUND","The selected branch is unavailable.");
-    const newReference=`${prefix(branch.rows[0].name)}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
+    const baseReference=applicationReference(branch.rows[0].name,student.name,student.dateOfBirth);
+    const matches=await client.query<{reference:string}>(
+      `SELECT reference FROM applications
+       WHERE tenant_id=$1 AND ($2::uuid IS NULL OR id<>$2)
+         AND (reference=$3 OR reference LIKE $3||'-%')`,
+      [parent.tenantId,student.applicationId,baseReference],
+    );
+    const newReference=nextAvailableReference(baseReference,matches.rows.map((row)=>row.reference));
     await client.query("UPDATE students SET branch_id=$2,updated_at=now() WHERE id=$1",[student.id,input.toBranchId]);
     if(student.applicationId){
       await client.query("UPDATE application_preferences SET branch_id=$2,updated_at=now() WHERE application_id=$1",[student.applicationId,input.toBranchId]);

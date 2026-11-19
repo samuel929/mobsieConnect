@@ -30,6 +30,15 @@
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
 
+  const stageLabel = (value) => {
+    const normalized = String(value || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!normalized) return '';
+    const stage = normalized.match(/^stage\s*(\d+)(?:\s+stage\s*\1)?$/i);
+    if (stage) return `Stage ${stage[1]}`;
+    if (/^grade\s*r(?:\s+grade\s*r)?$/i.test(normalized)) return 'Grade R';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  };
+
   const schoolGradeForBranch = (branchName) => {
     const value = String(branchName || '').trim();
     if (!value || value === '—') return '—';
@@ -156,13 +165,15 @@
     if (students) {
       window.DB.learners = students.map((student) => ({
         id: student.id,
+        applicationId: student.applicationId || '',
+        branchId: student.branchId || '',
         name: student.name,
         school: window.DB.SCHOOL_NAME,
         schoolId: 'sch-1',
         branch: student.branchName,
         schoolGrade: schoolGradeForBranch(student.branchName),
-        grade: student.grade,
-        cls: student.className,
+        grade: stageLabel(student.grade),
+        cls: stageLabel(student.className),
         parent: student.parentName,
         dateOfBirth:student.dateOfBirth,
         age:student.dateOfBirth?Math.max(0,Math.floor((Date.now()-new Date(student.dateOfBirth).getTime())/31557600000)):'',
@@ -239,8 +250,8 @@
         id:account.id,name:account.name,email:account.email,
         role:account.dashboardRoleName||(account.role==='PRINCIPAL'?'Principal':'Teacher'),roleValue:account.role,
         dashboardRoleId:account.dashboardRoleId||'',roleColor:account.dashboardRoleColor||'',
-        branchId:account.branchId||'',teamMemberId:account.teamMemberId||'',className:account.className||'',
-        scope:[account.branchName,account.className].filter(Boolean).join(' · ')||'Entire school group',
+        branchId:account.branchId||'',teamMemberId:account.teamMemberId||'',className:stageLabel(account.className),
+        scope:[account.branchName,stageLabel(account.className)].filter(Boolean).join(' · ')||'Entire school group',
         last:account.lastLoginAt?new Date(account.lastLoginAt).toLocaleString('en-ZA'):'Never',
         status:account.isActive?'Active':'Suspended',
       }));
@@ -353,7 +364,7 @@
         registrationFeeWaived: Boolean(application.registrationFeeWaived),
         childHasDisability: Boolean(application.childHasDisability),
         disabilityDetails: application.disabilityDetails || '',
-        grade: application.currentGrade,
+        grade: stageLabel(application.currentGrade),
         status: statusLabel(application.status),
         date: new Date(application.createdAt).toLocaleDateString('en-ZA'),
         createdAt: application.createdAt || '',
@@ -376,7 +387,7 @@
           schoolId: 'sch-1',
           branch: application.branchName || application.preferences?.branchName || 'Not assigned',
           branchId: application.branchId || application.preferences?.branchId || '',
-          grade: application.currentGrade,
+          grade: stageLabel(application.currentGrade),
           waitlistedAt: application.waitlistedAt || application.submittedAt || application.createdAt,
           priority: application.waitingListPriority || 'Standard',
         }))
@@ -420,6 +431,15 @@
         reason: statusLabel(item.reason),
         comments: item.comments || '',
         status: statusLabel(item.status),
+        applicationId: item.applicationId || '',
+        applicationReference: item.applicationReference || '',
+        dateOfBirth: item.dateOfBirth || '',
+        grade: stageLabel(item.grade || item.applicationGrade),
+        className: stageLabel(item.className),
+        enrollmentStatus: statusLabel(item.enrollmentStatus || (String(item.status).toUpperCase()==='COMPLETED'?'DEREGISTERED':'ENROLLED')),
+        gender: statusLabel(item.gender || ''),
+        applicationType: statusLabel(item.applicationType || ''),
+        applicationSubmittedAt: item.applicationSubmittedAt || '',
         submittedAt: item.submittedAt || '',
       }));
     }

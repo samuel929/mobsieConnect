@@ -11,15 +11,66 @@ window.Pages=window.Pages||{};
     if(/GRADE[\s_-]*R\b/.test(label))return 'GRADE_R';
     return label.split('—')[0].trim().replace(/[\s-]+/g,'_');
   };
+  const attendanceClassLabel=(value)=>{
+    const label=String(value||'').replace(/_/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+    return label?label.charAt(0).toUpperCase()+label.slice(1):'—';
+  };
+  const attendanceState={branchId:'',classCode:'',studentId:''};
+  const attendanceLearners=()=>{
+    const branch=(DB.branches||[]).find(item=>String(item.id)===String(attendanceState.branchId));
+    return (DB.learners||[]).filter(learner=>{
+      const branchMatches=!attendanceState.branchId||String(learner.branchId||'')===String(attendanceState.branchId)||learner.branch===branch?.name;
+      const classMatches=!attendanceState.classCode||[learner.cls,learner.grade].some(value=>attendanceClassCode(value)===attendanceState.classCode);
+      return branchMatches&&classMatches;
+    });
+  };
+  const attendanceRecords=()=>{
+    const records=DB.attendanceStats?.records||[];
+    return records.filter(record=>(!attendanceState.branchId||String(record.branchId)===String(attendanceState.branchId))
+      &&(!attendanceState.classCode||[record.className,record.grade].some(value=>attendanceClassCode(value)===attendanceState.classCode))
+      &&(!attendanceState.studentId||String(record.studentId)===String(attendanceState.studentId)));
+  };
   Pages.attendance={
     render(){
       const stats=DB.attendanceStats||{overall:{entries:0,present:0,percentage:0},grades:[],dates:[],heatmap:[],branches:[]};
       const days=(stats.dates||[]).map(date=>new Date(date+'T00:00:00').toLocaleDateString('en-ZA',{day:'2-digit',month:'short'}));
       const grades=[...new Set((stats.heatmap||[]).map(row=>row.grade))];
+      const gradeLabels=grades.map(attendanceClassLabel);
       const data=grades.map(grade=>(stats.dates||[]).map(date=>Number((stats.heatmap||[]).find(row=>row.grade===grade&&row.date===date)?.percentage||0)));
       const branchRows=stats.branches||[];
+      const branchLearners=(DB.learners||[]).filter(learner=>{
+        if(!attendanceState.branchId)return true;
+        const branch=(DB.branches||[]).find(item=>String(item.id)===String(attendanceState.branchId));
+        return String(learner.branchId||'')===String(attendanceState.branchId)||learner.branch===branch?.name;
+      });
+      const classMap=new Map();
+      branchLearners.forEach(learner=>{
+        const value=learner.cls||learner.grade;
+        if(value)classMap.set(attendanceClassCode(value),value);
+      });
+      const learners=attendanceLearners();
+      const filteredRecords=attendanceRecords();
+      const filteredPresent=filteredRecords.filter(record=>String(record.status).toUpperCase()==='PRESENT').length;
+      const filteredAbsent=filteredRecords.filter(record=>String(record.status).toUpperCase()==='ABSENT').length;
+      const filteredPercentage=filteredRecords.length?Math.round(filteredPresent/filteredRecords.length*1000)/10:0;
+      const selectedLearner=learners.find(learner=>String(learner.id)===String(attendanceState.studentId));
+      const historyTable=UI.table({
+        pageSize:12,rows:filteredRecords,
+        columns:[
+          {key:'date',label:'Date',render:r=>new Date(r.date+'T00:00:00').toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})},
+          {key:'studentName',label:'Learner'},
+          {key:'branchName',label:'Campus'},
+          {key:'className',label:'Class',render:r=>esc(attendanceClassLabel(r.className||r.grade))},
+          {key:'status',label:'Status',render:r=>UI.status(String(r.status||'').toLowerCase().replace(/^./,letter=>letter.toUpperCase()))},
+        ],
+      });
       const tbl=UI.table({
         pageSize:8, rows:branchRows,
+        onRow:row=>{
+          attendanceState.branchId=String(row.id||'');attendanceState.classCode='';attendanceState.studentId='';
+          App.refresh();
+          setTimeout(()=>document.getElementById('attFilters')?.scrollIntoView({behavior:'smooth',block:'start'}),0);
+        },
         columns:[
           {key:'name',label:'Campus',render:r=>`<div class="cell-main">${esc(r.name)}</div><div class="cell-sub">${esc(r.city)}</div>`},
           {key:'learners',label:'Learners',num:true,render:r=>F(r.learners)},
@@ -32,6 +83,24 @@ window.Pages=window.Pages||{};
         ${UI.pageHead('Attendance','Live attendance across every campus and class.',
           `<button class="btn btn-ghost" id="attExp">${MCIcon('download')} Export Register</button>
            <button class="btn btn-primary" id="attCap">${MCIcon('attendance')} Capture Attendance</button>`)}
+        <div class="card" id="attFilters" style="margin-bottom:20px;scroll-margin-top:90px">
+          <div class="card-head"><div><h3>Filter attendance</h3><div class="sub">Choose a campus, class and learner to view their complete attendance history.</div></div></div>
+          <div class="card-body">
+            <div class="form-row" style="align-items:end">
+              <div class="field"><label>Campus</label><select id="attFilterCampus"><option value="">All campuses</option>${DB.liveBranches().map(branch=>`<option value="${esc(branch.id)}" ${String(branch.id)===String(attendanceState.branchId)?'selected':''}>${esc(branch.name)}</option>`).join('')}</select></div>
+              <div class="field"><label>Class</label><select id="attFilterClass"><option value="">All classes</option>${[...classMap.entries()].map(([code,label])=>`<option value="${esc(code)}" ${code===attendanceState.classCode?'selected':''}>${esc(attendanceClassLabel(label))}</option>`).join('')}</select></div>
+              <div class="field"><label>Learner</label><select id="attFilterLearner"><option value="">All learners</option>${learners.map(learner=>`<option value="${esc(learner.id)}" ${String(learner.id)===String(attendanceState.studentId)?'selected':''}>${esc(learner.name)}</option>`).join('')}</select></div>
+              <button class="btn btn-ghost" id="attFilterClear" type="button">Clear filters</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid cards-4" style="margin-bottom:20px">
+          ${UI.statCard({icon:'learners',tint:'t-blue',label:selectedLearner?'Learner':'Matching learners',value:selectedLearner?selectedLearner.name:F(learners.length),deltaHtml:`<span class="delta flat">${selectedLearner?esc(selectedLearner.branch):'current filter'}</span>`})}
+          ${UI.statCard({icon:'attendance',tint:'t-green',label:'Overall attendance',value:filteredRecords.length?filteredPercentage+'%':'—',deltaHtml:`<span class="delta flat">all captured dates</span>`})}
+          ${UI.statCard({icon:'check',tint:'t-green',label:'Present',value:F(filteredPresent),deltaHtml:`<span class="delta flat">register entries</span>`})}
+          ${UI.statCard({icon:'clock',tint:'t-red',label:'Absent',value:F(filteredAbsent),deltaHtml:`<span class="delta flat">register entries</span>`})}
+        </div>
+        <div class="card" style="margin-bottom:20px"><div class="card-head"><div><h3>${selectedLearner?esc(selectedLearner.name)+' attendance history':'Filtered attendance history'}</h3><div class="sub">${F(filteredRecords.length)} saved register entries</div></div></div><div class="card-body" style="padding:0;padding-top:8px">${filteredRecords.length?historyTable:'<div class="empty-state" style="padding:55px 20px"><b>No attendance records found</b><p>Change the filters or capture a register for this selection.</p></div>'}</div></div>
         <div class="grid" style="grid-template-columns:1fr 1.6fr;margin-bottom:20px" id="attTop">
           ${UI.card('Platform average',`
             <div style="display:flex;align-items:center;gap:20px">
@@ -44,17 +113,23 @@ window.Pages=window.Pages||{};
               </div>
             </div>
             <div class="divider"></div>
-            ${(stats.grades||[]).length?(stats.grades||[]).map(row=>UI.meterRow(row.grade,Number(row.percentage||0))).join(''):'<p class="small muted">Grade attendance will appear after registers are captured.</p>'}`)}
-          ${UI.card('Attendance heatmap',days.length?'<div class="chart-box" style="overflow-x:auto">'+Charts.heatmap({rows:grades,cols:days,data})+'</div>':'<div class="empty-state" style="padding:70px 20px"><b>No attendance history</b><p>Capture a register to populate this chart.</p></div>',{sub:'Grade × saved attendance date · % present',right:days.length?UI.legend([{color:'#DCFCE7',label:'≤84%'},{color:'#4ADE80',label:'88–92%'},{color:'#15803D',label:'96%+'}]):''})}
+            ${(stats.grades||[]).length?(stats.grades||[]).map(row=>UI.meterRow(attendanceClassLabel(row.grade),Number(row.percentage||0))).join(''):'<p class="small muted">Grade attendance will appear after registers are captured.</p>'}`)}
+          ${UI.card('Attendance heatmap',days.length?'<div class="chart-box" style="overflow-x:auto">'+Charts.heatmap({rows:gradeLabels,cols:days,data})+'</div>':'<div class="empty-state" style="padding:70px 20px"><b>No attendance history</b><p>Capture a register to populate this chart.</p></div>',{sub:'Grade × saved attendance date · % present',right:days.length?UI.legend([{color:'#DCFCE7',label:'≤84%'},{color:'#4ADE80',label:'88–92%'},{color:'#15803D',label:'96%+'}]):''})}
         </div>
-        <div class="card"><div class="card-head"><div><h3>Attendance by campus</h3></div></div>
+        <div class="card"><div class="card-head"><div><h3>Attendance by campus</h3><div class="sub">Click a campus to view its classes, learners and complete attendance history.</div></div></div>
           <div class="card-body" style="padding:0;padding-top:8px">${tbl}</div></div>
         <style>@media(max-width:1100px){#attTop{grid-template-columns:1fr}}</style>`;
     },
     mount(root){
+      const campusFilter=root.querySelector('#attFilterCampus');
+      const classFilter=root.querySelector('#attFilterClass');
+      const learnerFilter=root.querySelector('#attFilterLearner');
+      campusFilter.addEventListener('change',()=>{attendanceState.branchId=campusFilter.value;attendanceState.classCode='';attendanceState.studentId='';App.refresh();});
+      classFilter.addEventListener('change',()=>{attendanceState.classCode=classFilter.value;attendanceState.studentId='';App.refresh();});
+      learnerFilter.addEventListener('change',()=>{attendanceState.studentId=learnerFilter.value;App.refresh();});
+      root.querySelector('#attFilterClear').addEventListener('click',()=>{attendanceState.branchId='';attendanceState.classCode='';attendanceState.studentId='';App.refresh();});
       root.querySelector('#attExp').addEventListener('click',()=>UI.downloadCSV('attendance-register.csv',
-        ['Campus','Learners','Last 7 days %','Entries','Absent today'],
-        (DB.attendanceStats?.branches||[]).map(b=>[b.name,b.learners,b.percentage,b.entries,b.absentToday])));
+        ['Date','Learner','Campus','Class','Status'],attendanceRecords().map(record=>[record.date,record.studentName,record.branchName,record.className||record.grade,record.status])));
       root.querySelector('#attCap').addEventListener('click',()=>UI.modal({
         title:'Capture Attendance',
         body:`<div class="attendance-capture-form">
@@ -1890,52 +1965,18 @@ Pages['daily-activity'] = {
   /* ---------- Reports ---------- */
   Pages.reports={
     render(){
-      const stats=DB.reportStats||{year:new Date().getFullYear(),term:null,completion:[],monthly:[]};
-      const completion=stats.completion||[];
-      const monthly=stats.monthly||[];
-      const learners=completion.reduce((sum,row)=>sum+Number(row.learners||0),0);
-      const completed=completion.reduce((sum,row)=>sum+Number(row.completed||0),0);
-      const overall=learners?Math.round(completed/learners*100):0;
-      const records=monthly.reduce((sum,row)=>sum+Number(row.value||0),0);
       return `
-        ${UI.pageHead('Reports','Report cards, milestone tracking and operational reporting.',
-          `<button class="btn btn-ghost" id="repDl">${MCIcon('download')} Download Centre</button>
-           <button class="btn btn-purple" id="repGen">${MCIcon('sparkle')} Generate Report</button>`)}
-        <div class="grid cards-4" style="margin-bottom:20px">
-          ${UI.statCard({icon:'reports',tint:'t-purple',label:'Report Completion',value:overall+'%',deltaHtml:`<span class="delta flat">${F(completed)} of ${F(learners)} learners</span>`})}
-          ${UI.statCard({icon:'learners',tint:'t-blue',label:'Learners Included',value:F(learners),deltaHtml:`<span class="delta flat">active enrolments</span>`})}
-          ${UI.statCard({icon:'check',tint:'t-green',label:'Completed Records',value:F(completed),deltaHtml:`<span class="delta flat">${stats.term?'Term '+stats.term:'latest term'}</span>`})}
-          ${UI.statCard({icon:'trendUp',tint:'t-orange',label:'Records Added',value:F(records),deltaHtml:`<span class="delta flat">last six months</span>`})}
-        </div>
-        <div class="grid" style="grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);margin-bottom:20px" id="repTop">
-          <div class="card" style="padding:22px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px"><div><h3 style="margin:0">Completion by grade</h3><div class="small muted" style="margin-top:5px">${stats.term?'Term '+stats.term:'Latest term'} · ${stats.year}</div></div>${UI.badge(overall+'% overall','purple')}</div>
-            ${completion.length?completion.map(row=>`<div style="padding:12px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>${esc(row.grade)}</b><span class="small muted">${F(row.completed)} / ${F(row.learners)}</span></div>${UI.meterRow('',Number(row.percentage||0),'purple')}</div>`).join(''):'<div class="empty-state" style="padding:55px 20px"><b>No report-card records</b><p>Add academic records to calculate completion.</p></div>'}
+        ${UI.pageHead('Reports','Reporting and analytics tools are being prepared for a future release.')}
+        <div class="card" style="min-height:520px;display:grid;place-items:center">
+          <div style="max-width:560px;text-align:center;padding:64px 28px">
+            <span class="s-ic t-purple" style="width:72px;height:72px;border-radius:22px;display:grid;place-items:center;margin:0 auto 22px">${MCIcon('reports')}</span>
+            <span class="badge t-purple" style="margin-bottom:14px">Coming soon</span>
+            <h2 style="font-size:28px;margin:0 0 12px;color:var(--ink-900)">Reports are coming soon</h2>
+            <p class="muted" style="font-size:16px;line-height:1.65;margin:0">We’re building a reliable reporting centre for learner progress, attendance and operational insights.</p>
           </div>
-          ${UI.card('Academic activity',`<div class="chart-box">${Charts.bars({labels:monthly.map(row=>row.label),series:[{name:'Records',color:'#7C3AED',data:monthly.map(row=>Number(row.value||0))}],height:246,capLabels:true})}</div>`,{sub:'Records saved to Neon in the last six months'})}
-        </div>
-        <div class="card"><div class="card-head"><div><h3>Report runs</h3></div></div>
-          <div class="card-body" style="padding-top:8px">
-            <div class="empty" style="padding:36px 20px"><div class="e-ic">${MCIcon('reports')}</div><h4>No generated report history</h4><p>Use Generate Report to export the current Neon summary.</p></div>
-          </div></div>
-        <style>@media(max-width:1100px){#repTop{grid-template-columns:1fr}}</style>`;
+        </div>`;
     },
-    mount(root){
-      const exportCompletion=()=>UI.downloadCSV('mobsie-report-card-completion.csv',
-        ['Grade','Learners','Completed','Completion %'],
-        (DB.reportStats?.completion||[]).map(row=>[row.grade,row.learners,row.completed,row.percentage]));
-      root.querySelector('#repDl').addEventListener('click',exportCompletion);
-      root.querySelector('#repGen').addEventListener('click',()=>UI.modal({
-        title:'Generate Current Report',
-        body:`<p class="small muted">This export uses the current academic records stored in Neon for ${esc(String(DB.reportStats?.year||new Date().getFullYear()))}${DB.reportStats?.term?' · Term '+esc(String(DB.reportStats.term)):''}.</p>`,
-        foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-purple" data-s>${MCIcon('download')} Download CSV</button>`,
-        mount(r,close){
-          r.querySelector('[data-x]').addEventListener('click',close);
-          r.querySelector('[data-s]').addEventListener('click',()=>{
-            exportCompletion();close();UI.toast('Current report downloaded.');
-          });
-        }
-      }));
-    }
+    mount(){}
   };
 
   /* ---------- Calendar ---------- */

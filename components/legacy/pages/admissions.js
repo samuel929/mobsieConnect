@@ -1043,6 +1043,11 @@ function formatDocumentSize(bytes) {
         body:`${UI.dl([
           ['Learner',esc(r.learner)],['Parent / guardian',esc(r.parent)],
           ['Parent email',esc(r.email||'—')],['Branch',esc(r.branch||'—')],
+          ['Application reference',esc(r.applicationReference||'—')],
+          ['Application type',esc(r.applicationType||'—')],
+          ['Date of birth',esc(r.dateOfBirth||'—')],['Gender',esc(r.gender||'—')],
+          ['Stage / grade',esc(r.grade||'—')],['Class',esc(r.className||'—')],
+          ['Learner status',UI.status(r.enrollmentStatus||'Deregistered')],
           ['Last attendance date',esc(r.lastDay||'—')],['Scheduled removal',esc(r.removalDate||'—')],
           ['Reason',esc(r.reason||'—')],['Status',UI.status(r.status)]
         ])}${r.comments?`<div class="divider"></div><h4>Parent comments</h4><p class="small">${esc(r.comments)}</p>`:''}`

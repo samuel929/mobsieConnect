@@ -27,12 +27,12 @@ window.Pages=window.Pages||{};
         ])}</section>`:''}
       </div>`,
       foot:`<button class="btn btn-ghost" data-edit>${MCIcon('edit')} Edit</button>
-            <button class="btn btn-ghost" data-delete>${MCIcon('delete')} Delete</button>
+            <button class="btn btn-ghost" data-deregister>${MCIcon('applications')} Deregister</button>
             <button class="btn btn-primary" data-go="reports">${MCIcon('reports')} View Full Report</button>`,
       mount(root,close){
         root.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>{close();App.go(b.dataset.go);}));
         root.querySelector('[data-edit]').addEventListener('click',()=>{close();editLearner(l);});
-        root.querySelector('[data-delete]').addEventListener('click',()=>{close();deleteLearner(l);});
+        root.querySelector('[data-deregister]').addEventListener('click',()=>{close();deregisterLearner(l);});
       }
     });
   }
@@ -62,9 +62,15 @@ window.Pages=window.Pages||{};
         });
       }});
   }
-  async function deleteLearner(l){
-    if(!confirm(`Delete ${l.name}? This cannot be undone.`))return;
-    try{await MobsieApi.mutate('/api/students?id='+encodeURIComponent(l.id),{method:'DELETE'});DB.learners=DB.learners.filter(item=>item.id!==l.id);const branch=DB.branches.find(item=>item.name===l.branch);if(branch)branch.students=Math.max(0,(branch.students||1)-1);DB.recount();DB.save();UI.toast('Learner deleted.');App.refresh();}catch(error){UI.toast(error.message||'Could not delete learner','alert');}
+  function deregisterLearner(l){
+    UI.modal({title:'Deregister '+esc(l.name),body:`<div class="form-grid">
+      <div class="field"><label>Last day of attendance</label><input type="date" data-f="lastDayOfAttendance" required></div>
+      <div class="field"><label>Reason</label><select data-f="reason"><option value="MOVING_SCHOOLS">Moving schools</option><option value="RELOCATING">Relocating</option><option value="FINANCIAL_REASONS">Financial reasons</option><option value="PERSONAL_REASONS">Personal reasons</option><option value="OTHER">Other</option></select></div>
+      <div class="field full"><label>Comments (optional)</label><textarea data-f="comments" maxlength="1000"></textarea></div>
+    </div>`,foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" data-s>Confirm Deregistration</button>`,mount(root,close){
+      root.querySelector('[data-x]').addEventListener('click',close);
+      root.querySelector('[data-s]').addEventListener('click',async()=>{const button=root.querySelector('[data-s]'),values=UI.formVals(root);if(!values.lastDayOfAttendance){UI.toast('Choose the learner\'s last day of attendance.','alert');return;}button.disabled=true;try{await MobsieApi.mutate('/api/deregistrations',{method:'POST',body:JSON.stringify({applicationId:l.applicationId||undefined,studentId:l.id,lastDayOfAttendance:values.lastDayOfAttendance,reason:values.reason,comments:values.comments||''})});close();await MobsieApi.load();UI.toast('Deregistration request scheduled.');App.refresh();}catch(error){button.disabled=false;UI.toast(error.message||'Could not deregister learner','alert');}});
+    }});
   }
 
   Pages.learners={
