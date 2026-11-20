@@ -611,7 +611,7 @@ window.Pages=window.Pages||{};
     `,
 
     body: `
-      <div
+      <div class="application-detail-hero"
         style="
           display:flex;
           align-items:center;
@@ -624,7 +624,7 @@ window.Pages=window.Pages||{};
           "xl"
         )}
 
-        <div>
+        <div class="application-detail-identity">
           <div
             style="
               font-size:17px;
@@ -644,7 +644,7 @@ window.Pages=window.Pages||{};
           </div>
         </div>
 
-        <span style="margin-left:auto">
+        <span class="application-detail-status" style="margin-left:auto">
           ${UI.status(
             isDeregisteredRecord ? 'Deregistered' : a.status
           )}
@@ -1072,7 +1072,7 @@ function formatDocumentSize(bytes) {
       ? App.scoped(DB.deregistrations||[])
       : App.scoped(DB.applications).filter(r=>aState.tab==='All'||(aState.tab==='Waiting List'?r.status==='Waitlisted':r.status===aState.tab));
     const tbl=isDeregistrations?UI.table({
-      pageSize:9,rows,
+      pageSize:9,rows,tableCls:'applications-responsive-table',
       onRow:openDeregistrationRecord,
       columns:[
         {key:'learner',label:'Learner',render:r=>UI.personCell(r.learner,r.branch)},
@@ -1084,7 +1084,7 @@ function formatDocumentSize(bytes) {
         {label:'',sortable:false,render:()=>`<button class="icon-btn">${MCIcon('chevRight')}</button>`},
       ],
     }):UI.table({
-      pageSize:9, rows, onRow:openApplication,
+      pageSize:9, rows, onRow:openApplication, tableCls:'applications-responsive-table',
       columns:[
         {key:'id',label:'ID',render:r=>`<span class="cell-main" style="font-variant-numeric:tabular-nums">${r.id}</span>`},
         {key:'child',label:'Child',render:r=>UI.personCell(r.child,r.grade)},

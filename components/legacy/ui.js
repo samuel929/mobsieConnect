@@ -127,7 +127,7 @@
       return `<th class="${cls}" data-sort="${c.sortable!==false&&c.key?c.key:''}">${esc(c.label)}${arr}</th>`;
     }).join('');
     const tbody=slice.length?slice.map((r,i)=>{
-      const tds=cfg.columns.map(c=>`<td class="${c.num?'num':''}">${c.render?c.render(r):esc(r[c.key])}</td>`).join('');
+      const tds=cfg.columns.map(c=>`<td class="${c.num?'num':''}" data-label="${esc(c.label||'')}">${c.render?c.render(r):esc(r[c.key])}</td>`).join('');
       return `<tr class="${cfg.onRow?'clickable':''}" data-row="${rows.indexOf(r)}">${tds}</tr>`;
     }).join(''):`<tr><td colspan="${cfg.columns.length}">${empty(cfg.emptyIcon||'search','No results','Try adjusting your search or filters.')}</td></tr>`;
     let pgs='';

@@ -2041,7 +2041,7 @@ Pages['daily-activity'] = {
           </select>
         </div>
         <div class="grid" style="grid-template-columns:2.4fr 1fr" id="calWrap">
-          <div class="card"><div class="card-body" style="padding:0"><div class="cal-grid">${cells}</div></div></div>
+          <div class="card calendar-grid-card"><div class="card-body" style="padding:0"><div class="cal-grid">${cells}</div></div></div>
           <div>
             ${UI.card(monthLabel(calState.month)+' events',`<div>${events.length?events.map(event=>{
               const date=new Date(event.startsAt),toneName=categoryTone[event.category]||'blue';
