@@ -65,7 +65,7 @@ export default apiHandler<unknown>(
     const result = await query<Record<string, unknown>>(
       `SELECT d.id,d.student_id AS "studentId",d.parent_account_id AS "parentAccountId",
               d.student_name AS "studentName",d.parent_name AS "parentName",
-              d.parent_email::text AS "parentEmail",d.branch_id AS "branchId",
+              d.parent_email::text AS "parentEmail",p.phone AS "parentPhone",d.branch_id AS "branchId",
               COALESCE(d.branch_name,b.name) AS "branchName",
               d.last_day_of_attendance::text AS "lastDayOfAttendance",
               d.scheduled_for::text AS "removalScheduledFor",d.reason,d.comments,
@@ -81,6 +81,7 @@ export default apiHandler<unknown>(
          LEFT JOIN branches b ON b.id=d.branch_id
          LEFT JOIN students s ON s.id=d.student_id
          LEFT JOIN applications a ON a.id=s.application_id
+         LEFT JOIN parent_accounts p ON p.id=COALESCE(d.parent_account_id,s.parent_account_id,a.parent_account_id)
         WHERE d.tenant_id=$1
           AND ($2::uuid IS NULL OR d.branch_id=$2::uuid)
           AND ($3::text IS NULL OR d.status=$3)

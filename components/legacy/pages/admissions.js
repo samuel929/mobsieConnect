@@ -97,8 +97,9 @@ window.Pages=window.Pages||{};
     });
   }
 
-  async function openApplication(a) {
+  async function openApplication(a, deregistration = null) {
   let detail = null;
+  const isDeregisteredRecord = Boolean(deregistration);
 
   /**
    * The real database UUID must be available.
@@ -500,8 +501,10 @@ window.Pages=window.Pages||{};
                         </span>
                       `
                     }
-                    <button class="btn btn-ghost btn-sm" data-doc-review="APPROVED" data-doc-id="${esc(document.id || "")}">${MCIcon("check")} Approve</button>
-                    <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject &amp; request replacement</button>
+                    ${isDeregisteredRecord ? '' : `
+                      <button class="btn btn-ghost btn-sm" data-doc-review="APPROVED" data-doc-id="${esc(document.id || "")}">${MCIcon("check")} Approve</button>
+                      <button class="btn btn-ghost btn-sm" data-doc-review="REJECTED" data-doc-id="${esc(document.id || "")}">${MCIcon("x")} Reject &amp; request replacement</button>
+                    `}
                   </div>
                 </div>
               `;
@@ -587,7 +590,7 @@ window.Pages=window.Pages||{};
   UI.drawer({
     cls: "application-details-drawer",
     title:
-      "Application " +
+      (isDeregisteredRecord ? "Deregistered learner — " : "Application ") +
       (detail?.reference || a.id || ""),
 
     headIcon: `
@@ -635,20 +638,15 @@ window.Pages=window.Pages||{};
           </div>
 
           <div class="muted small">
-            Applying for
-            ${esc(
-              detail?.currentGrade || a.grade
-            )}
-            ·
-            ${esc(
-              a.school
-            )}
+            ${isDeregisteredRecord ? 'Historical enrolment record' : 'Applying for'}
+            ${esc(detail?.currentGrade || a.grade || '')}
+            · ${esc(a.school || DB.SCHOOL_NAME || '')}
           </div>
         </div>
 
         <span style="margin-left:auto">
           ${UI.status(
-            a.status
+            isDeregisteredRecord ? 'Deregistered' : a.status
           )}
         </span>
       </div>
@@ -656,13 +654,23 @@ window.Pages=window.Pages||{};
       ${detailSection('Application record', [
         ['Application reference', shown(detail?.reference || a.id)],
         ['Database ID', shown(detail?.id || a.databaseId || a.applicationId)],
-        ['Status', shown(detail?.status || a.status)],
+        ['Status', shown(isDeregisteredRecord ? 'DEREGISTERED' : (detail?.status || a.status))],
         ['Application type', shown(detail?.applicationType || a.applicationType || 'NEW')],
         ['Created', dateTime(detail?.createdAt)],
         ['Submitted', dateTime(detail?.submittedAt || a.date)],
         ['Last updated', dateTime(detail?.updatedAt)],
         ['Documents uploaded', `${documentCount}`],
       ])}
+
+      ${isDeregisteredRecord ? detailSection('Deregistration record', [
+        ['Deregistration status', shown(deregistration.status || 'DEREGISTERED')],
+        ['Last attendance date', shown(deregistration.lastDay)],
+        ['Effective removal date', shown(deregistration.removalDate)],
+        ['Reason', shown(deregistration.reason)],
+        ['Comments', shown(deregistration.comments)],
+        ['Request submitted', dateTime(deregistration.submittedAt)],
+        ['Learner enrolment status', shown(deregistration.enrollmentStatus || 'DEREGISTERED')],
+      ], 'This information is retained as a historical record and is not counted as an active enrolment') : ''}
 
       ${detailSection('Parent / guardian information', [
         ['Full name', shown(detail?.parentName || a.parent)],
@@ -681,8 +689,8 @@ window.Pages=window.Pages||{};
       ${detailSection('Child information', [
         ['Full name', shown(detail?.childName || a.child)],
         ['ID / passport number', shown(detail?.childIdNumber)],
-        ['Date of birth', shown(detail?.childDateOfBirth)],
-        ['Gender', shown(detail?.childGender)],
+        ['Date of birth', shown(detail?.childDateOfBirth || deregistration?.dateOfBirth)],
+        ['Gender', shown(detail?.childGender || deregistration?.gender)],
         ['Current grade', shown(detail?.currentGrade || a.grade)],
       ])}
 
@@ -783,7 +791,12 @@ window.Pages=window.Pages||{};
       </div>
     `,
 
-    foot: `
+    foot: isDeregisteredRecord ? `
+      ${applicationIdentifier ? `<a class="btn btn-ghost" href="/api/applications/${encodeURIComponent(applicationIdentifier)}/pdf" download>
+        ${MCIcon("download")} Download historical PDF
+      </a>` : ''}
+      <span class="small muted" style="margin-left:auto">Deregistered learner record</span>
+    ` : `
       <a
         class="btn btn-ghost"
         href="/api/applications/${encodeURIComponent(applicationIdentifier)}/pdf"
@@ -984,6 +997,28 @@ window.Pages=window.Pages||{};
   });
 }
 
+  function openDeregistrationRecord(record) {
+    const application = (DB.applications || []).find(item =>
+      String(item.dbId || item.databaseId || item.applicationId || '') === String(record.applicationId || '')
+    );
+    const historicalApplication = application || {
+      dbId: record.applicationId || '',
+      applicationId: record.applicationId || '',
+      id: record.applicationReference || record.id,
+      child: record.learner,
+      parent: record.parent,
+      email: record.email,
+      phone: record.phone,
+      school: record.school || DB.SCHOOL_NAME,
+      branch: record.branch,
+      grade: record.grade || record.className,
+      status: 'Deregistered',
+      applicationType: record.applicationType,
+      date: record.applicationSubmittedAt || record.submittedAt,
+    };
+    return openApplication(historicalApplication, record);
+  }
+
 function formatDocumentSize(bytes) {
   if (
     !bytes ||
@@ -1038,20 +1073,7 @@ function formatDocumentSize(bytes) {
       : App.scoped(DB.applications).filter(r=>aState.tab==='All'||(aState.tab==='Waiting List'?r.status==='Waitlisted':r.status===aState.tab));
     const tbl=isDeregistrations?UI.table({
       pageSize:9,rows,
-      onRow:r=>UI.drawer({
-        title:'Deregistration — '+esc(r.learner),
-        body:`${UI.dl([
-          ['Learner',esc(r.learner)],['Parent / guardian',esc(r.parent)],
-          ['Parent email',esc(r.email||'—')],['Branch',esc(r.branch||'—')],
-          ['Application reference',esc(r.applicationReference||'—')],
-          ['Application type',esc(r.applicationType||'—')],
-          ['Date of birth',esc(r.dateOfBirth||'—')],['Gender',esc(r.gender||'—')],
-          ['Stage / grade',esc(r.grade||'—')],['Class',esc(r.className||'—')],
-          ['Learner status',UI.status(r.enrollmentStatus||'Deregistered')],
-          ['Last attendance date',esc(r.lastDay||'—')],['Scheduled removal',esc(r.removalDate||'—')],
-          ['Reason',esc(r.reason||'—')],['Status',UI.status(r.status)]
-        ])}${r.comments?`<div class="divider"></div><h4>Parent comments</h4><p class="small">${esc(r.comments)}</p>`:''}`
-      }),
+      onRow:openDeregistrationRecord,
       columns:[
         {key:'learner',label:'Learner',render:r=>UI.personCell(r.learner,r.branch)},
         {key:'parent',label:'Parent / guardian',render:r=>`<div>${esc(r.parent)}</div><div class="cell-sub">${esc(r.email||'')}</div>`},
@@ -1352,15 +1374,7 @@ function formatDocumentSize(bytes) {
     const completed=rows.filter(item=>['completed','processed'].includes(String(item.status).toLowerCase())).length;
     const tbl=UI.table({
       pageSize:10,rows,
-      onRow:r=>UI.drawer({
-        title:'Deregistration — '+esc(r.learner),
-        body:`${UI.dl([
-          ['Learner',esc(r.learner)],['Parent / guardian',esc(r.parent)],
-          ['Parent email',esc(r.email||'—')],['Branch',esc(r.branch||'—')],
-          ['Last attendance date',esc(r.lastDay||'—')],['Scheduled removal',esc(r.removalDate||'—')],
-          ['Reason',esc(r.reason||'—')],['Status',UI.status(r.status)]
-        ])}${r.comments?`<div class="divider"></div><h4>Parent comments</h4><p class="small">${esc(r.comments)}</p>`:''}`
-      }),
+      onRow:openDeregistrationRecord,
       columns:[
         {key:'learner',label:'Learner',render:r=>UI.personCell(r.learner,r.branch)},
         {key:'parent',label:'Parent / guardian',render:r=>`<div>${esc(r.parent)}</div><div class="cell-sub">${esc(r.email||'')}</div>`},

@@ -156,9 +156,18 @@ window.Pages=window.Pages||{};
     },
     mount(root){
       root.querySelector('#invQ').addEventListener('input',e=>UI.tableFilter(Pages.invoices._tid,e.target.value));
-      root.querySelector('#invNew').addEventListener('click',()=>UI.modal({
+      root.querySelector('#invNew').addEventListener('click',()=>{
+        const activeParents=DB.parents.filter(parent=>parent.status!=='Inactive');
+        const campuses=[...new Map(activeParents.filter(parent=>parent.branchId).map(parent=>[String(parent.branchId),{id:String(parent.branchId),name:parent.branch||'Not assigned'}])).values()]
+          .sort((a,b)=>a.name.localeCompare(b.name));
+        const campusOptions=[`<option value="">All campuses</option>`,...campuses.map(campus=>`<option value="${esc(campus.id)}">${esc(campus.name)}</option>`)].join('');
+        UI.modal({
         title:'New Invoice',
-        body:`<div class="field"><label>Bill to</label><select data-f="parent">${DB.parents.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.email||p.branch||'')}</option>`).join('')}</select></div>
+        body:`<div class="form-row">
+            <div class="field"><label>Campus</label><select data-f="campus">${campusOptions}</select></div>
+            <div class="field"><label>Class</label><select data-f="className"><option value="">All classes</option></select></div>
+          </div>
+          <div class="field"><label>Bill to</label><select data-f="parent"></select><small data-parent-count style="display:block;margin-top:6px;color:var(--ink-500)"></small></div>
           <div class="field"><label>Description</label><input type="text" data-f="desc" placeholder="e.g. Aftercare — June"></div>
           <div class="form-row">
             <div class="field"><label>Amount (R)</label><input type="number" data-f="amount" placeholder="0.00"></div>
@@ -166,6 +175,31 @@ window.Pages=window.Pages||{};
           </div>`,
         foot:`<button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-s>Issue Invoice</button>`,
         mount(r,close){
+          const campusSelect=r.querySelector('[data-f="campus"]');
+          const classSelect=r.querySelector('[data-f="className"]');
+          const parentSelect=r.querySelector('[data-f="parent"]');
+          const parentCount=r.querySelector('[data-parent-count]');
+          const comparable=value=>String(value||'').trim().toLowerCase().replace(/[_\s-]+/g,'');
+          const campusParents=()=>activeParents.filter(parent=>!campusSelect.value||String(parent.branchId)===campusSelect.value);
+          const updateParents=()=>{
+            const selectedClass=comparable(classSelect.value);
+            const matches=campusParents().filter(parent=>!selectedClass||(parent.classNames||[]).some(className=>comparable(className)===selectedClass));
+            parentSelect.innerHTML=matches.length
+              ? matches.map(parent=>`<option value="${esc(parent.id)}">${esc(parent.name)} — ${esc(parent.email||parent.branch||'')}</option>`).join('')
+              : '<option value="">No parents found for this class</option>';
+            parentSelect.disabled=!matches.length;
+            parentCount.textContent=matches.length===1?'1 parent available':matches.length+' parents available';
+          };
+          const updateClasses=()=>{
+            const previous=classSelect.value;
+            const classes=[...new Set(campusParents().flatMap(parent=>parent.classNames||[]).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+            classSelect.innerHTML='<option value="">All classes</option>'+classes.map(className=>`<option value="${esc(className)}">${esc(className)}</option>`).join('');
+            if(classes.includes(previous)) classSelect.value=previous;
+            updateParents();
+          };
+          campusSelect.addEventListener('change',updateClasses);
+          classSelect.addEventListener('change',updateParents);
+          updateClasses();
           r.querySelector('[data-x]').addEventListener('click',close);
           r.querySelector('[data-s]').addEventListener('click',async()=>{
             const v=UI.formVals(r);
@@ -182,7 +216,8 @@ window.Pages=window.Pages||{};
             }catch(error){UI.toast(error.message||'Could not issue invoice','alert');}
           });
         }
-      }));
+        });
+      });
     }
   };
 

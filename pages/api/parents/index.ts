@@ -42,7 +42,8 @@ export default apiHandler<ParentRow[]>(
     const result = await query<ParentRow>(
       `SELECT p.id,p.email::text,p.name,p.phone,
          COALESCE(student_branch.branch_id,application_branch.branch_id,p.preferred_branch_id) AS "branchId",
-         b.name AS "branchName",p.is_active AS "isActive",
+         b.name AS "branchName",COALESCE(parent_classes.class_names,ARRAY[]::text[]) AS "classNames",
+         p.is_active AS "isActive",
          (SELECT count(*)::int FROM students s WHERE s.parent_account_id=p.id) AS children,
          (SELECT count(*)::int FROM applications a WHERE a.parent_account_id=p.id) AS applications,
          p.last_login_at::text AS "lastLoginAt",p.created_at::text AS "createdAt"
@@ -62,6 +63,17 @@ export default apiHandler<ParentRow[]>(
           ORDER BY a.updated_at DESC,a.created_at DESC
           LIMIT 1
        ) application_branch ON true
+       LEFT JOIN LATERAL (
+         SELECT ARRAY(
+           SELECT DISTINCT COALESCE(NULLIF(trim(scoped_class.class_name),''),NULLIF(trim(scoped_class.grade),''))
+             FROM students scoped_class
+            WHERE scoped_class.tenant_id=p.tenant_id
+              AND scoped_class.parent_account_id=p.id
+              AND scoped_class.enrollment_status='ENROLLED'
+              AND COALESCE(NULLIF(trim(scoped_class.class_name),''),NULLIF(trim(scoped_class.grade),'')) IS NOT NULL
+            ORDER BY 1
+         ) AS class_names
+       ) parent_classes ON true
        LEFT JOIN branches b ON b.id=COALESCE(student_branch.branch_id,application_branch.branch_id,p.preferred_branch_id)
        WHERE p.tenant_id=$1
          AND ($2='' OR p.name ILIKE '%'||$2||'%' OR p.email::text ILIKE '%'||$2||'%')
