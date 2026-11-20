@@ -77,6 +77,7 @@ window.Pages=window.Pages||{};
           {key:'percentage',label:'Last 7 days',render:r=>`<div style="display:flex;align-items:center;gap:10px;min-width:150px"><span class="meter"><i style="width:${DB.safeNumber(r.percentage)}%"></i></span><b style="font-variant-numeric:tabular-nums">${r.entries?DB.safeNumber(r.percentage).toFixed(1):'—'}${r.entries?'%':''}</b></div>`},
           {key:'entries',label:'Entries',num:true},
           {key:'absentToday',label:'Absent today',num:true},
+          {key:'id',label:'',sortable:false,render:()=>`<span class="btn btn-soft btn-sm">View attendance ${MCIcon('arrowRight')}</span>`},
         ],
       });
       return `

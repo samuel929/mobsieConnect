@@ -13,9 +13,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(400).send("Invalid signature"); return;
   }
   const isShop = req.query.type === "shop";
-  const table = isShop ? "shop_order_payments" : "application_payments";
-  const payment = await query<{ id: string; amountCents: number; orderId?: string }>(
-    `SELECT id,amount_cents AS "amountCents"${isShop ? ',order_id AS "orderId"' : ""}
+  const isInvoice = req.query.type === "invoice";
+  const table = isInvoice ? "invoice_payments" : isShop ? "shop_order_payments" : "application_payments";
+  const payment = await query<{ id: string; amountCents: number; orderId?: string; invoiceId?: string }>(
+    `SELECT id,amount_cents AS "amountCents"${isShop ? ',order_id AS "orderId"' : isInvoice ? ',invoice_id AS "invoiceId"' : ""}
      FROM ${table} WHERE merchant_payment_id=$1`,
     [fields.m_payment_id],
   );
@@ -67,6 +68,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          FROM quantities q WHERE p.id=q.product_id`, [row.orderId],
       );
     }
+  }
+  if (isInvoice && row.invoiceId && status === "COMPLETE") {
+    await query(`UPDATE invoices SET status='PAID',paid_at=COALESCE(paid_at,now()),updated_at=now()
+                 WHERE id=$1 AND status='DUE'`, [row.invoiceId]);
   }
   res.status(200).send("OK");
 }

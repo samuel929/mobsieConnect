@@ -6,8 +6,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const shopPayment = Array.isArray(req.query.shopPayment)
     ? req.query.shopPayment[0]
     : req.query.shopPayment;
+  const invoicePayment = Array.isArray(req.query.invoicePayment)
+    ? req.query.invoicePayment[0]
+    : req.query.invoicePayment;
   let returnUrl: string | null = null;
-  if (shopPayment) {
+  if (invoicePayment) {
+    const updated = await query<{ returnUrl: string | null }>(
+      `UPDATE invoice_payments SET status='CANCELLED',updated_at=now()
+       WHERE id=$1 AND status<>'COMPLETE' RETURNING return_url AS "returnUrl"`, [invoicePayment],
+    );
+    returnUrl = updated.rows[0]?.returnUrl ?? null;
+  } else if (shopPayment) {
     const existing = await query<{ returnUrl: string | null }>(
       `SELECT return_url AS "returnUrl" FROM shop_order_payments WHERE id=$1`, [shopPayment],
     );
@@ -38,11 +47,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     );
     returnUrl = updated.rows[0]?.returnUrl ?? null;
   }
-  const fallback = shopPayment ? "mobsieconnect://shop/payment/cancel" : "mobsieconnect://payment/cancel";
+  const fallback = invoicePayment ? "mobsieconnect://invoices/payment/cancel" : shopPayment ? "mobsieconnect://shop/payment/cancel" : "mobsieconnect://payment/cancel";
   const base = (returnUrl || fallback).replace(/payment\/return(?:\/)?$/, "payment/cancel");
   const separator = base.includes("?") ? "&" : "?";
-  const key = shopPayment ? "shopPayment" : "payment";
-  const target = `${base}${separator}${key}=${encodeURIComponent(shopPayment || payment || "")}`;
+  const key = invoicePayment ? "invoicePayment" : shopPayment ? "shopPayment" : "payment";
+  const target = `${base}${separator}${key}=${encodeURIComponent(invoicePayment || shopPayment || payment || "")}`;
   const encoded = JSON.stringify(target).replace(/</g, "\\u003c");
   const escaped = target.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   res.setHeader("Content-Type", "text/html; charset=utf-8");

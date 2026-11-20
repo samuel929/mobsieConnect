@@ -41,7 +41,7 @@ export default apiHandler<Record<string,unknown>[]>({methods:["GET","POST"],role
     );
     await createAndSendNotification({tenantId:user!.tenantId,parentAccountId:input.parentAccountId,branchId:parent.rows[0].branchId,
       title:"A new invoice has been sent to your app",body:`Invoice ${invoiceNumber}: ${input.description} — R ${input.amount.toFixed(2)}`,
-      sourceType:"INVOICE",sourceId:String(saved.rows[0].id),data:{screen:"Notifications",invoiceId:saved.rows[0].id}});
+      sourceType:"INVOICE",sourceId:String(saved.rows[0].id),data:{screen:"Invoices",invoiceId:saved.rows[0].id}});
     const row=await query<Record<string,unknown>>(`${invoiceSelect} WHERE i.id=$1 AND i.tenant_id=$2`,[saved.rows[0].id,user!.tenantId]);
     res.status(201).json({ok:true,data:row.rows});return;
   }

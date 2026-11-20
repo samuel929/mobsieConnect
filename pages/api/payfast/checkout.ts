@@ -12,12 +12,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "GET") { res.status(405).end(); return; }
   const applicationPayment = Array.isArray(req.query.payment) ? req.query.payment[0] : req.query.payment;
   const shopPayment = Array.isArray(req.query.shopPayment) ? req.query.shopPayment[0] : req.query.shopPayment;
+  const invoicePayment = Array.isArray(req.query.invoicePayment) ? req.query.invoicePayment[0] : req.query.invoicePayment;
   let row: CheckoutPayment | undefined;
   let returnPath = "";
   let cancelPath = "";
   let notifyPath = "";
 
-  if (shopPayment) {
+  if (invoicePayment) {
+    const result = await query<CheckoutPayment>(
+      `SELECT p.id,p.merchant_payment_id AS "merchantPaymentId",p.amount_cents AS "amountCents",p.status,
+              i.invoice_number AS reference,a.name AS "parentName",a.email::text AS "parentEmail",a.phone AS "parentPhone",
+              'Mobsie invoice ' || i.invoice_number AS "itemName",i.description AS "itemDescription"
+       FROM invoice_payments p JOIN invoices i ON i.id=p.invoice_id
+       JOIN parent_accounts a ON a.id=i.parent_account_id WHERE p.id=$1`, [invoicePayment]);
+    row = result.rows[0];
+    returnPath = `/api/payfast/return/?invoicePayment=${invoicePayment}`;
+    cancelPath = `/api/payfast/cancel/?invoicePayment=${invoicePayment}`;
+    notifyPath = "/api/payfast/notify/?type=invoice";
+  } else if (shopPayment) {
     const result = await query<CheckoutPayment>(
       `SELECT p.id,p.merchant_payment_id AS "merchantPaymentId",p.amount_cents AS "amountCents",p.status,
               o.reference,o.parent_name AS "parentName",a.email::text AS "parentEmail",a.phone AS "parentPhone",
@@ -60,7 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     item_description: row.itemDescription,
   };
   fields.signature = payFastSignature(fields, config.passphrase);
-  const table = shopPayment ? "shop_order_payments" : "application_payments";
+  const table = invoicePayment ? "invoice_payments" : shopPayment ? "shop_order_payments" : "application_payments";
   await query(`UPDATE ${table} SET status='PENDING',updated_at=now() WHERE id=$1`, [row.id]);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(payFastForm(fields, config.processUrl));

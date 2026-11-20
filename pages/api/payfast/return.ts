@@ -11,6 +11,7 @@ function html(target:string){
 export default async function handler(req:NextApiRequest,res:NextApiResponse){
   const payment=Array.isArray(req.query.payment)?req.query.payment[0]:req.query.payment;
   const shopPayment=Array.isArray(req.query.shopPayment)?req.query.shopPayment[0]:req.query.shopPayment;
+  const invoicePayment=Array.isArray(req.query.invoicePayment)?req.query.invoicePayment[0]:req.query.invoicePayment;
   const config=payFastConfig();
   // PayFast's sandbox can complete the browser flow without delivering its ITN
   // callback. Reconcile only sandbox payments on PayFast's success redirect so
@@ -40,14 +41,25 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse){
         UPDATE shop_orders SET status='PROCESSING',updated_at=now()
         WHERE id IN (SELECT order_id FROM paid) AND status='AWAITING_PAYMENT'`,[shopPayment]);
   }
-  const result=shopPayment
+  if(invoicePayment&&config.sandbox){
+    await query(`WITH paid AS (
+          UPDATE invoice_payments SET status='COMPLETE',payment_method=COALESCE(payment_method,'SANDBOX_TEST'),
+            amount_gross_cents=COALESCE(amount_gross_cents,amount_cents),amount_fee_cents=COALESCE(amount_fee_cents,0),
+            amount_net_cents=COALESCE(amount_net_cents,amount_cents),paid_at=COALESCE(paid_at,now()),updated_at=now()
+          WHERE id=$1 AND status IN ('CREATED','PENDING') RETURNING invoice_id
+        ) UPDATE invoices SET status='PAID',paid_at=COALESCE(paid_at,now()),updated_at=now()
+          WHERE id IN (SELECT invoice_id FROM paid) AND status='DUE'`,[invoicePayment]);
+  }
+  const result=invoicePayment
+    ? await query<{return_url:string|null}>("SELECT return_url FROM invoice_payments WHERE id=$1",[invoicePayment])
+    : shopPayment
     ? await query<{return_url:string|null}>("SELECT return_url FROM shop_order_payments WHERE id=$1",[shopPayment])
     : payment
       ? await query<{return_url:string|null}>("SELECT return_url FROM application_payments WHERE id=$1",[payment])
       : null;
-  const base=result?.rows[0]?.return_url||(shopPayment?"mobsieconnect://shop/payment/return":"mobsieconnect://payment/return");
+  const base=result?.rows[0]?.return_url||(invoicePayment?"mobsieconnect://invoices/payment/return":shopPayment?"mobsieconnect://shop/payment/return":"mobsieconnect://payment/return");
   const separator=base.includes("?")?"&":"?";
-  const target=`${base}${separator}${shopPayment?'shopPayment':'payment'}=${encodeURIComponent(shopPayment||payment||"")}`;
+  const target=`${base}${separator}${invoicePayment?'invoicePayment':shopPayment?'shopPayment':'payment'}=${encodeURIComponent(invoicePayment||shopPayment||payment||"")}`;
   res.setHeader("Content-Type","text/html; charset=utf-8");
   res.status(200).send(html(target));
 }

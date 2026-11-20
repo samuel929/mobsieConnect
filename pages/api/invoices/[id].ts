@@ -21,7 +21,7 @@ export default apiHandler<Record<string,unknown>>({methods:["PATCH"],roles:["PRI
   }else{
     await createAndSendNotification({tenantId:user!.tenantId,parentAccountId:invoice.parentId,branchId:invoice.branchId,
       title:`Invoice reminder: ${invoice.number}`,body:`${invoice.description} — R ${(invoice.amountCents/100).toFixed(2)}`,
-      data:{screen:"Notifications",invoiceId:invoice.id}});
+      data:{screen:"Invoices",invoiceId:invoice.id}});
   }
   res.status(200).json({ok:true,data:{id,action:input.action}});
 });
